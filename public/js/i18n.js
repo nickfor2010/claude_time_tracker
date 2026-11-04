@@ -203,7 +203,7 @@ const zh = {
   'Annual leave': '特休',
   'Personal leave': '事假',
   'Sick leave': '病假',
-  'Day off': '其他休假',
+  'Other leave': '其他休假',
   'half day': '半天',
   '1 day': '1 天',
   '{n} days': '{n} 天',
@@ -259,6 +259,15 @@ const zh = {
   'This request was cancelled': '這個申請已被取消',
   'Invalid decision': '無效的操作',
   'Invalid subscription': '通知設定無效',
+  'incl. {pay} paid leave': '含帶薪假 {pay}',
+  'incl. {n} days paid leave ({pay})': '含帶薪假 {n} 天（{pay}）',
+  'Paid leave {pct}%': '帶薪假 {pct}%',
+  'Paid leave': '帶薪假',
+  'How much of the normal pay each type of approved leave earns. It is added to payroll and the CSV export.': '已核准的各種假別可領取正常薪資的比例，會自動計入薪資和 CSV 匯出。',
+  'Common in Taiwan: annual leave 100%, sick leave 50%, personal leave unpaid. Paid hours per leave day are set for each person in Team.': '台灣常見做法：特休 100%、病假 50%、事假不支薪。每位員工每個休假日的給薪時數在「團隊」中設定。',
+  'Paid hours per leave day': '每個休假日給薪時數',
+  '{h}h per leave day': '休假日 {h} 小時',
+  'Leave pay must be between 0 and 100%': '給薪比例必須介於 0 到 100% 之間',
 };
 
 export function getLang() {

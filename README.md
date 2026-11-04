@@ -18,6 +18,8 @@ A time clock for the Parsley team. Staff install it on their phones and tap a bu
 
 Staff tap **Time off → Request** on their phone, then choose the type (annual 特休, personal 事假, sick 病假, other), the dates (or a half day) and a reason. The manager sees a badge and a banner, and approves or declines in **Time off** with an optional reply. The employee sees the answer the next time they open the app.
 
+**Paid leave in payroll.** Approved leave is added to the payroll estimate, the Timesheets (as its own rows) and the CSV export. Each leave day pays the person's *paid hours per leave day* (set in Team, default 8) × hourly rate × the percentage for that leave type. The defaults follow common Taiwan practice: annual 100%, sick 50%, personal 0%, other 0%. Change them in Settings → Paid leave. Leave is counted per calendar day of the approved request.
+
 **Phone notifications.** On the Time off page (manager) or under Time off (staff), tap **Turn on** on each phone that should be notified.
 - **iPhone (iOS 16.4 or newer):** first add the page to the Home Screen and open it from there. The dashboard installs as its own app, "Parsley 管理".
 - **Android:** works in Chrome directly.

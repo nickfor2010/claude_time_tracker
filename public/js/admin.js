@@ -114,7 +114,7 @@ function renderOverview() {
       <div class="card kpi hero"><div class="k">${icons.clock} ${t('On shift now')}</div><div class="v">${d.onShift.length}<small>/ ${active.length}</small></div><div class="h">${d.onShift.length ? esc(d.onShift.map((s) => s.name.split(' ')[0]).join(', ')) : t('Nobody clocked in')}</div></div>
       <div class="card kpi"><div class="k">${icons.sun} ${t('Hours today')}</div><div class="v">${hours(tot.todayMs)}<small>${t('h')}</small></div><div class="h">${dateLabel(d.today, { weekday: 'long', month: 'short', day: 'numeric' })}</div></div>
       <div class="card kpi"><div class="k">${icons.cal} ${t('Hours this week')}</div><div class="v">${hours(tot.weekMs)}<small>${t('h')}</small></div><div class="h">${t('Since Monday')}</div></div>
-      <div class="card kpi"><div class="k">${icons.coins} ${t('Payroll this month')}</div><div class="v" style="font-size:clamp(20px,2.4vw,30px)">${money(tot.monthPay)}</div><div class="h">${t('{h} h worked · estimate', { h: hours(tot.monthMs) })}</div></div>
+      <div class="card kpi"><div class="k">${icons.coins} ${t('Payroll this month')}</div><div class="v" style="font-size:clamp(20px,2.4vw,30px)">${money(tot.monthPay)}</div><div class="h">${t('{h} h worked · estimate', { h: hours(tot.monthMs) })}${tot.monthLeavePay ? ` · ${t('incl. {pay} paid leave', { pay: money(tot.monthLeavePay) })}` : ''}</div></div>
     </div>
     <div class="grid-2">
       <div class="card panel">
@@ -135,7 +135,7 @@ function renderOverview() {
       <div class="card panel">
         <div class="panel-head"><h2>${t('This week by person')}</h2><span class="muted">${t('Mon – today')}</span></div>
         <div class="table-wrap"><table class="tbl"><thead><tr><th>${t('Employee')}</th><th class="num">${t('Today')}</th><th class="num">${t('Week')}</th><th class="num">${t('Month')}</th><th class="num">${t('Month pay')}</th></tr></thead><tbody>
-        ${active.map((e) => `<tr><td><span class="emp">${avatar(e)}${esc(e.name)}</span></td><td class="num">${dur(e.todayMs)}</td><td class="num">${dur(e.weekMs)}</td><td class="num">${dur(e.monthMs)}</td><td class="num">${money(e.monthMs / 3600e3 * e.hourly_rate)}</td></tr>`).join('') || `<tr><td colspan="5" class="muted">${t('No team members yet.')}</td></tr>`}
+        ${active.map((e) => `<tr><td><span class="emp">${avatar(e)}${esc(e.name)}</span></td><td class="num">${dur(e.todayMs)}</td><td class="num">${dur(e.weekMs)}</td><td class="num">${dur(e.monthMs)}</td><td class="num">${money(e.monthMs / 3600e3 * e.hourly_rate + (e.monthLeavePay || 0))}</td></tr>`).join('') || `<tr><td colspan="5" class="muted">${t('No team members yet.')}</td></tr>`}
         </tbody></table></div>
       </div>
       <div class="card panel">
@@ -217,16 +217,26 @@ async function loadShifts() {
   const { from, to } = monthRange(state.month);
   const r = await api(`/api/admin/shifts?from=${from}&to=${to}${state.empFilter ? `&employee=${state.empFilter}` : ''}`);
   state.shifts = r.shifts;
+  state.leaveDays = r.leave || [];
 }
 function renderTimesheets() {
   const d = state.data, shifts = state.shifts;
   const { from, to } = monthRange(state.month);
   const byEmp = {};
+  const newB = (x) => ({ e: { name: x.name, color: x.color }, ms: 0, n: 0, pay: 0, days: new Set(), leaveDays: 0, leavePay: 0 });
   for (const s of shifts) {
-    const b = (byEmp[s.employee_id] ||= { e: { name: s.name, color: s.color }, ms: 0, n: 0, pay: 0, days: new Set() });
+    const b = (byEmp[s.employee_id] ||= newB(s));
     const w = worked(s, d.now);
     b.ms += w; b.n++; b.pay += (w / 3600e3) * (s.hourly_rate || 0); b.days.add(s.day);
   }
+  const leaveDays = state.leaveDays || [];
+  for (const l of leaveDays) {
+    const b = (byEmp[l.employee_id] ||= newB(l));
+    b.leaveDays += l.half_day ? 0.5 : 1; b.leavePay += l.pay; b.pay += l.pay;
+  }
+  // Shifts and paid-leave days in one list, newest first
+  const rowsAll = [...shifts.map((s) => ({ key: s.day, at: s.clock_in, s })), ...leaveDays.map((l) => ({ key: l.date, at: Date.parse(l.date + 'T23:59:59Z'), l }))]
+    .sort((a, b) => b.key.localeCompare(a.key) || b.at - a.at);
   const monthName = dateLabel(from, { month: 'long', year: 'numeric' });
   $('#page').innerHTML = `
     <div class="page-head">
@@ -238,11 +248,21 @@ function renderTimesheets() {
         <button class="btn btn-primary" id="ts-add">${icons.plus} ${t('Add shift')}</button>
       </div>
     </div>
-    <div class="sum-cards">${Object.values(byEmp).map((b) => `<div class="card sum-card">${avatar(b.e)}<div><div style="font-weight:600">${esc(b.e.name)}</div><div class="v">${dur(b.ms)}</div><div class="s">${t('{n} days · {pay}', { n: b.days.size, pay: money(b.pay) })}</div></div></div>`).join('')}</div>
+    <div class="sum-cards">${Object.values(byEmp).map((b) => `<div class="card sum-card">${avatar(b.e)}<div><div style="font-weight:600">${esc(b.e.name)}</div><div class="v">${dur(b.ms)}</div><div class="s">${t('{n} days · {pay}', { n: b.days.size, pay: money(b.pay) })}${b.leaveDays ? `<br>${t('incl. {n} days paid leave ({pay})', { n: b.leaveDays, pay: money(b.leavePay) })}` : ''}</div></div></div>`).join('')}</div>
     <div class="card panel" style="padding:6px 6px">
       <div class="table-wrap"><table class="tbl">
         <thead><tr><th>${t('Date')}</th><th>${t('Employee')}</th><th>${t('In')}</th><th>${t('Out')}</th><th class="num">${t('Break')}</th><th class="num">${t('Worked')}</th><th class="num">${t('Pay')}</th><th>${t('Note')}</th><th></th></tr></thead>
-        <tbody>${shifts.length ? shifts.map((s) => {
+        <tbody>${rowsAll.length ? rowsAll.map(({ s, l }) => {
+          if (l) return `<tr class="leave-row">
+            <td>${dateLabel(l.date)}</td>
+            <td><span class="emp">${avatar(l)}${esc(l.name)}</span></td>
+            <td colspan="2"><span class="tag leave">${icons.plane.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px"')} ${leaveLabel(l.type)}${l.half_day ? ' · ' + t('half day') : ''}</span></td>
+            <td class="num">—</td>
+            <td class="num"><b>${dur(l.hours * 3600e3)}</b></td>
+            <td class="num">${money(l.pay)}</td>
+            <td class="muted">${t('Paid leave {pct}%', { pct: l.pct })}</td>
+            <td class="acts"><button class="btn btn-ghost btn-icon btn-sm" data-goto="timeoff" aria-label="${t('Time off')}">${icons.plane}</button></td>
+          </tr>`;
           const w = worked(s, d.now);
           const loc = s.in_lat != null ? ` <a href="https://maps.google.com/?q=${s.in_lat},${s.in_lng}" target="_blank" rel="noopener" title="${t('Clock-in location')}" style="color:var(--ink-3)">${icons.pin.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px"')}</a>` : '';
           return `<tr>
@@ -379,7 +399,7 @@ function renderTeam() {
     </div>
     <div class="team-cards">${d.employees.length ? d.employees.slice().sort((a, b) => b.active - a.active).map((e) => `
       <div class="card member ${e.active ? '' : 'inactive'}">
-        <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${money(e.hourly_rate)}/${t('h')}${e.active ? '' : ' · ' + t('inactive')}</div></div>
+        <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${money(e.hourly_rate)}/${t('h')} · ${t('{h}h per leave day', { h: e.leave_hours ?? 8 })}${e.active ? '' : ' · ' + t('inactive')}</div></div>
           <button class="btn btn-ghost btn-icon btn-sm" style="margin-left:auto" data-emp="${e.id}" aria-label="${t('Edit {name}', { name: esc(e.name) })}">${icons.edit}</button></div>
         <div class="member-stats"><div><div class="k">${t('Today')}</div><div class="v">${hours(e.todayMs)}h</div></div><div><div class="k">${t('Week')}</div><div class="v">${hours(e.weekMs)}h</div></div><div><div class="k">${t('Month')}</div><div class="v">${hours(e.monthMs)}h</div></div></div>
         ${e.onShift ? `<span class="pill pill-live" style="justify-self:start"><span class="dot"></span>${t('On shift now')}</span>` : ''}
@@ -393,6 +413,7 @@ function openEmp(e) {
   $('#em-name').value = e?.name || '';
   $('#em-role').value = e?.role || '';
   $('#em-rate').value = e ? e.hourly_rate : 196;
+  $('#em-leave').value = e ? (e.leave_hours ?? 8) : 8;
   $('#em-pin').value = '';
   $('#em-pin').required = !e;
   $('#em-pin-label').textContent = e ? t('New PIN (leave empty to keep)') : t('PIN (4–6 digits)');
@@ -402,7 +423,7 @@ function openEmp(e) {
   $('#form-emp').onsubmit = async (ev) => {
     if (ev.submitter?.value !== 'save') return;
     ev.preventDefault();
-    const body = { name: $('#em-name').value, role: $('#em-role').value, hourly_rate: Number($('#em-rate').value) || 0, pin: $('#em-pin').value };
+    const body = { name: $('#em-name').value, role: $('#em-role').value, hourly_rate: Number($('#em-rate').value) || 0, leave_hours: Number($('#em-leave').value), pin: $('#em-pin').value };
     if (e) body.active = $('#em-active').checked;
     try {
       await api(e ? `/api/admin/employees/${e.id}` : '/api/admin/employees', { method: e ? 'PATCH' : 'POST', body });
@@ -426,6 +447,13 @@ function renderSettings() {
         <p class="muted" style="margin:0">${t('Timezone: <b>{tz}</b> (set with the APP_TIMEZONE variable on the server).', { tz: esc(d.timezone) })}</p>
         <button class="btn btn-primary" style="justify-self:start">${t('Save')}</button>
       </form>
+      <form class="card" id="f-leavepay">
+        <h2>${t('Paid leave')}</h2><p>${t('How much of the normal pay each type of approved leave earns. It is added to payroll and the CSV export.')}</p>
+        <div class="row-2">${['annual', 'sick', 'personal', 'other'].map((k) => `
+          <div class="field"><label for="lp-${k}">${leaveLabel(k)} (%)</label><input class="input" type="number" min="0" max="100" step="5" id="lp-${k}" value="${d.leavePay?.[k] ?? 0}"></div>`).join('')}</div>
+        <p class="muted" style="margin:0;font-size:12.5px">${t('Common in Taiwan: annual leave 100%, sick leave 50%, personal leave unpaid. Paid hours per leave day are set for each person in Team.')}</p>
+        <button class="btn btn-primary" style="justify-self:start">${t('Save')}</button>
+      </form>
       <form class="card" id="f-pass">
         <h2>${t('Admin password')}</h2><p>${t('Used to open this dashboard.')}</p>
         <div class="field"><label for="s-cur">${t('Current password')}</label><input class="input" type="password" id="s-cur" autocomplete="current-password" required></div>
@@ -437,6 +465,11 @@ function renderSettings() {
   $('#f-company').onsubmit = async (ev) => {
     ev.preventDefault();
     await api('/api/admin/settings', { method: 'POST', body: { company: $('#s-company').value, geo: $('#s-geo').checked, alert_hours: Number($('#s-alert').value) } }).then(() => { toast(t('Settings saved')); refresh(); }, (e) => toast(e.message, true));
+  };
+  $('#f-leavepay').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const leave_pay = Object.fromEntries(['annual', 'sick', 'personal', 'other'].map((k) => [k, Number($(`#lp-${k}`).value)]));
+    api('/api/admin/settings', { method: 'POST', body: { leave_pay } }).then(() => { toast(t('Settings saved')); refresh(); }, (e) => toast(e.message, true));
   };
   $('#f-pass').onsubmit = async (ev) => {
     ev.preventDefault();

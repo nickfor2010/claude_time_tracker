@@ -8,7 +8,7 @@ const ADMIN_SESSION_HOURS = 12;
 const PBKDF2_ITERATIONS = 20000; // kept modest for the Workers CPU budget; logins are also rate-limited
 const LEAVE_TYPES = ['annual', 'personal', 'sick', 'other'];
 const LEAVE_LABEL = {
-  en: { annual: 'Annual leave', personal: 'Personal leave', sick: 'Sick leave', other: 'Day off' },
+  en: { annual: 'Annual leave', personal: 'Personal leave', sick: 'Sick leave', other: 'Other leave' },
   zh: { annual: '特休', personal: '事假', sick: '病假', other: '休假' },
 };
 // Categorical palette (validated for colour-blind separation), assigned in order.
@@ -84,7 +84,9 @@ export const addDays = (dateStr, n) => {
 };
 const weekday = (dateStr) => new Date(dateStr + 'T00:00:00Z').getUTCDay(); // 0 = Sunday
 const workedMs = (s, now = Date.now()) => Math.max(0, (s.clock_out ?? now) - s.clock_in - (s.break_min || 0) * 60000);
-const publicEmployee = (e) => e && ({ id: e.id, name: e.name, role: e.role, color: e.color, hourly_rate: e.hourly_rate, active: !!e.active, created_at: e.created_at });
+const publicEmployee = (e) => e && ({ id: e.id, name: e.name, role: e.role, color: e.color, hourly_rate: e.hourly_rate, leave_hours: e.leave_hours ?? 8, active: !!e.active, created_at: e.created_at });
+// Share of normal pay for each leave type (Taiwan common practice; editable in Settings).
+const DEFAULT_LEAVE_PAY = { annual: 100, sick: 50, personal: 0, other: 0 };
 
 // ---------- HTTP helpers ----------
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -98,6 +100,8 @@ async function readBody(req) {
   if (text.length > 1e5) throw new HttpError(413, 'Too large');
   try { return text ? JSON.parse(text) : {}; } catch { throw new HttpError(400, 'Invalid JSON'); }
 }
+const leaveHours = (v, fallback) => { const n = Number(v); return n >= 0 && n <= 24 ? n : fallback; };
+const lastDayOfMonth = (monthStart) => { const [y, m] = monthStart.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
 const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const isTime = (s) => typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
 const validPin = (p) => typeof p === 'string' && /^\d{4,6}$/.test(p);
@@ -115,6 +119,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
 
   async function init() {
     await db.batch(SCHEMA);
+    // Migration for databases created before paid leave existed.
+    try { await db.run('ALTER TABLE employees ADD COLUMN leave_hours REAL DEFAULT 8'); } catch { /* column already exists */ }
     if (!(await getSetting('admin_hash'))) {
       await setSetting('admin_hash', await hashSecret(adminPassword || 'parsley'));
       await setSetting('admin_default', adminPassword ? '0' : '1');
@@ -197,7 +203,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     const monthStart = today.slice(0, 8) + '01';
     const chartStart = addDays(today, -13);
     const from = [monthStart, weekStart, chartStart].sort()[0];
-    const [employees, shifts, onShift, activity, company, adminDefault, geo, alertHours, pendingLeave, leaveSoon] = await Promise.all([
+    const [employees, shifts, onShift, activity, company, adminDefault, geo, alertHours, pendingLeave, leaveSoon, monthLeave] = await Promise.all([
       db.all('SELECT * FROM employees ORDER BY created_at'),
       shiftsInRange(from, today),
       db.all('SELECT s.*, e.name, e.color, e.role FROM shifts s JOIN employees e ON e.id = s.employee_id WHERE s.clock_out IS NULL ORDER BY s.clock_in'),
@@ -206,10 +212,17 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       db.get("SELECT COUNT(*) AS n FROM leave_requests WHERE status = 'pending'"),
       db.all(`SELECT l.*, e.name, e.color FROM leave_requests l JOIN employees e ON e.id = l.employee_id
         WHERE l.status = 'approved' AND l.end_date >= ? AND l.start_date <= ? ORDER BY l.start_date`, [today, addDays(today, 13)]),
+      leaveEntries(monthStart, lastDayOfMonth(monthStart)),
     ]);
     const days = Array.from({ length: 14 }, (_, i) => ({ date: addDays(chartStart, i), byEmp: {} }));
-    const totals = { todayMs: 0, weekMs: 0, monthMs: 0, monthPay: 0 };
-    const perEmp = Object.fromEntries(employees.map((e) => [e.id, { todayMs: 0, weekMs: 0, monthMs: 0 }]));
+    const totals = { todayMs: 0, weekMs: 0, monthMs: 0, monthPay: 0, monthLeavePay: 0, monthLeaveDays: 0 };
+    const perEmp = Object.fromEntries(employees.map((e) => [e.id, { todayMs: 0, weekMs: 0, monthMs: 0, monthLeavePay: 0, monthLeaveDays: 0 }]));
+    for (const l of monthLeave) {
+      const pe = perEmp[l.employee_id], days = l.half_day ? 0.5 : 1;
+      if (pe) { pe.monthLeavePay += l.pay; pe.monthLeaveDays += days; }
+      totals.monthLeavePay += l.pay; totals.monthLeaveDays += days;
+    }
+    totals.monthPay += totals.monthLeavePay;
     for (const s of shifts) {
       const d = dayKey(s.clock_in), w = workedMs(s, now), pe = perEmp[s.employee_id];
       const slot = days.find((x) => x.date === d);
@@ -222,7 +235,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       now, today, timezone: TZ, company, geo: geo === '1', adminDefaultPassword: adminDefault === '1', alertHours: Number(alertHours) || 12,
       employees: employees.map((e) => ({ ...publicEmployee(e), ...perEmp[e.id], onShift: onShift.some((s) => s.employee_id === e.id) })),
       totals, onShift, days, activity,
-      pendingLeave: pendingLeave.n, leaveSoon: leaveSoon.map(withDays),
+      pendingLeave: pendingLeave.n, leaveSoon: leaveSoon.map(withDays), leavePay: await leavePayRates(),
     };
   }
 
@@ -235,14 +248,30 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       ? ['員工', '日期', '上班打卡', '下班打卡', '休息（分鐘）', '工時（小時）', '工時（時:分）', '時薪', '薪資', '備註']
       : ['Employee', 'Date', 'Clock in', 'Clock out', 'Break (min)', 'Duration (hours)', 'Duration (h:m)', 'Hourly rate', 'Gross', 'Note']];
     const totals = {};
-    for (const s of shifts) {
-      const ms = workedMs(s), hrs = ms / 3600e3;
-      rows.push([s.name, dayKey(s.clock_in), clk(s.clock_in), clk(s.clock_out), s.break_min || 0, hrs.toFixed(2), hm(ms), s.hourly_rate || 0, Math.round(hrs * (s.hourly_rate || 0)), s.note || '']);
-      const t = (totals[s.name] ||= { ms: 0, pay: 0 });
-      t.ms += ms; t.pay += hrs * (s.hourly_rate || 0);
+    const entries = shifts.map((s) => ({ date: dayKey(s.clock_in), sort: s.clock_in, s }));
+    for (const l of await leaveEntries(fromDate, toDate, employeeId)) entries.push({ date: l.date, sort: zonedToMs(l.date), l });
+    entries.sort((a, b) => a.sort - b.sort);
+    const label = LEAVE_LABEL[zh ? 'zh' : 'en'];
+    for (const { s, l } of entries) {
+      if (s) {
+        const ms = workedMs(s), hrs = ms / 3600e3;
+        rows.push([s.name, dayKey(s.clock_in), clk(s.clock_in), clk(s.clock_out), s.break_min || 0, hrs.toFixed(2), hm(ms), s.hourly_rate || 0, Math.round(hrs * (s.hourly_rate || 0)), s.note || '']);
+        const t = (totals[s.name] ||= { ms: 0, pay: 0, leaveMs: 0, leavePay: 0 });
+        t.ms += ms; t.pay += hrs * (s.hourly_rate || 0);
+      } else {
+        const ms = l.hours * 3600e3;
+        rows.push([l.name, l.date, label[l.type], '', '', l.hours.toFixed(2), hm(ms), l.hourly_rate, Math.round(l.pay),
+          zh ? `帶薪假 ${l.pct}%${l.half_day ? '（半天）' : ''}` : `Paid leave ${l.pct}%${l.half_day ? ' (half day)' : ''}`]);
+        const t = (totals[l.name] ||= { ms: 0, pay: 0, leaveMs: 0, leavePay: 0 });
+        t.leaveMs += ms; t.leavePay += l.pay;
+      }
     }
     rows.push([]);
-    for (const [name, t] of Object.entries(totals)) rows.push([`${zh ? '合計' : 'TOTAL'} ${name}`, '', '', '', '', (t.ms / 3600e3).toFixed(2), hm(t.ms), '', Math.round(t.pay), '']);
+    for (const [name, t] of Object.entries(totals)) {
+      rows.push([`${zh ? '合計' : 'TOTAL'} ${name}`, zh ? '工作' : 'worked', '', '', '', (t.ms / 3600e3).toFixed(2), hm(t.ms), '', Math.round(t.pay), '']);
+      if (t.leaveMs) rows.push([`${zh ? '合計' : 'TOTAL'} ${name}`, zh ? '帶薪假' : 'paid leave', '', '', '', (t.leaveMs / 3600e3).toFixed(2), hm(t.leaveMs), '', Math.round(t.leavePay), '']);
+      if (t.leaveMs) rows.push([`${zh ? '應付薪資' : 'GROSS PAY'} ${name}`, '', '', '', '', '', '', '', Math.round(t.pay + t.leavePay), '']);
+    }
     const esc = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
     return '﻿' + rows.map((r) => r.map(esc).join(',')).join('\r\n');
   }
@@ -266,6 +295,28 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     const f = (d) => new Intl.DateTimeFormat(lang === 'zh' ? 'zh-TW' : 'en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(new Date(d + 'T00:00:00Z'));
     return r.start_date === r.end_date ? f(r.start_date) : `${f(r.start_date)} – ${f(r.end_date)}`;
   };
+
+  async function leavePayRates() {
+    try { return { ...DEFAULT_LEAVE_PAY, ...JSON.parse((await getSetting('leave_pay')) || '{}') }; } catch { return { ...DEFAULT_LEAVE_PAY }; }
+  }
+  // One entry per approved leave day inside [fromDate, toDate], with paid hours and pay.
+  async function leaveEntries(fromDate, toDate, employeeId) {
+    const rates = await leavePayRates();
+    const params = [toDate, fromDate];
+    if (employeeId) params.push(employeeId);
+    const rows = await db.all(`SELECT l.*, e.name, e.color, e.hourly_rate, e.leave_hours FROM leave_requests l JOIN employees e ON e.id = l.employee_id
+      WHERE l.status = 'approved' AND l.start_date <= ? AND l.end_date >= ? ${employeeId ? 'AND l.employee_id = ?' : ''}`, params);
+    const out = [];
+    for (const r of rows) {
+      for (let d = r.start_date > fromDate ? r.start_date : fromDate; d <= r.end_date && d <= toDate; d = addDays(d, 1)) {
+        const hours = (r.leave_hours ?? 8) * (r.half_day ? 0.5 : 1);
+        const pct = Number(rates[r.type]) || 0;
+        out.push({ request_id: r.id, employee_id: r.employee_id, name: r.name, color: r.color, hourly_rate: r.hourly_rate || 0,
+          date: d, type: r.type, half_day: r.half_day, hours, pct, pay: hours * (r.hourly_rate || 0) * pct / 100 });
+      }
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
+  }
 
   // ---------- push notifications ----------
   async function vapid() {
@@ -408,8 +459,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         if (!b.name?.trim()) throw new HttpError(400, 'Name is required');
         if (!validPin(b.pin)) throw new HttpError(400, 'PIN must be 4–6 digits');
         const { n } = await db.get('SELECT COUNT(*) AS n FROM employees');
-        const { lastId } = await db.run('INSERT INTO employees(name, role, pin_hash, color, hourly_rate, active, created_at) VALUES(?, ?, ?, ?, ?, 1, ?)',
-          [b.name.trim().slice(0, 40), String(b.role || '').trim().slice(0, 40), await hashSecret(b.pin), EMPLOYEE_COLORS[n % EMPLOYEE_COLORS.length], Number(b.hourly_rate) || 0, Date.now()]);
+        const { lastId } = await db.run('INSERT INTO employees(name, role, pin_hash, color, hourly_rate, leave_hours, active, created_at) VALUES(?, ?, ?, ?, ?, ?, 1, ?)',
+          [b.name.trim().slice(0, 40), String(b.role || '').trim().slice(0, 40), await hashSecret(b.pin), EMPLOYEE_COLORS[n % EMPLOYEE_COLORS.length], Number(b.hourly_rate) || 0, leaveHours(b.leave_hours, 8), Date.now()]);
         return json(201, publicEmployee(await db.get('SELECT * FROM employees WHERE id = ?', [lastId])));
       }
       let mm;
@@ -418,9 +469,10 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         const emp = await db.get('SELECT * FROM employees WHERE id = ?', [Number(mm[1])]);
         if (!emp) throw new HttpError(404, 'Employee not found');
         if (b.pin !== undefined && b.pin !== '' && !validPin(b.pin)) throw new HttpError(400, 'PIN must be 4–6 digits');
-        await db.run('UPDATE employees SET name = ?, role = ?, hourly_rate = ?, active = ?, pin_hash = ? WHERE id = ?', [
+        await db.run('UPDATE employees SET name = ?, role = ?, hourly_rate = ?, leave_hours = ?, active = ?, pin_hash = ? WHERE id = ?', [
           b.name?.trim()?.slice(0, 40) || emp.name, b.role !== undefined ? String(b.role).trim().slice(0, 40) : emp.role,
           b.hourly_rate !== undefined ? Number(b.hourly_rate) || 0 : emp.hourly_rate,
+          b.leave_hours !== undefined ? leaveHours(b.leave_hours, emp.leave_hours ?? 8) : (emp.leave_hours ?? 8),
           b.active !== undefined ? (b.active ? 1 : 0) : emp.active,
           b.pin ? await hashSecret(b.pin) : emp.pin_hash, emp.id]);
         if (b.active === false) await db.run("DELETE FROM sessions WHERE kind = 'emp' AND employee_id = ?", [emp.id]);
@@ -431,7 +483,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         const from = url.searchParams.get('from'), to = url.searchParams.get('to');
         if (!isDate(from) || !isDate(to)) throw new HttpError(400, 'from/to required');
         const shifts = await shiftsInRange(from, to, Number(url.searchParams.get('employee')) || null);
-        return json(200, { now: Date.now(), shifts: shifts.map((s) => ({ ...s, day: dayKey(s.clock_in) })) });
+        const leave = await leaveEntries(from, to, Number(url.searchParams.get('employee')) || null);
+        return json(200, { now: Date.now(), shifts: shifts.map((s) => ({ ...s, day: dayKey(s.clock_in) })), leave });
       }
       if (p === '/api/admin/shifts' && m === 'POST') {
         const b = await readBody(req);
@@ -495,6 +548,15 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         }
         if (b.company?.trim()) await setSetting('company', b.company.trim().slice(0, 60));
         if (b.geo !== undefined) await setSetting('geo', b.geo ? '1' : '0');
+        if (b.leave_pay !== undefined) {
+          const rates = {};
+          for (const k of LEAVE_TYPES) {
+            const v = Number(b.leave_pay?.[k]);
+            if (!(v >= 0 && v <= 100)) throw new HttpError(400, 'Leave pay must be between 0 and 100%');
+            rates[k] = v;
+          }
+          await setSetting('leave_pay', JSON.stringify(rates));
+        }
         if (b.alert_hours !== undefined) {
           const h = Number(b.alert_hours);
           if (!(h >= 1 && h <= 24)) throw new HttpError(400, 'Warning time must be between 1 and 24 hours');

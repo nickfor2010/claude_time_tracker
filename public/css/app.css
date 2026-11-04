@@ -376,3 +376,6 @@ dialog form > *, .row-2 > *, .row-3 > *, .field { min-width: 0; }
 dialog { overflow-x: hidden; }
 .pill { white-space: nowrap; }
 .pill-warn { white-space: normal; }
+
+.tag.leave { background: var(--tint); color: var(--primary); display: inline-flex; align-items: center; gap: 4px; margin-left: 0; }
+.leave-row td { background: color-mix(in srgb, var(--tint) 45%, transparent); }
