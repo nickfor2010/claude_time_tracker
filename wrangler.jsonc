@@ -1,0 +1,19 @@
+// Cloudflare Workers config for Parsley Time.
+// On the first deploy Cloudflare creates the "parsley-time" D1 database automatically.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "parsley-time",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "parsley-time" }
+  ],
+  "vars": {
+    "APP_TIMEZONE": "Asia/Taipei"
+  },
+  "observability": { "enabled": true }
+}

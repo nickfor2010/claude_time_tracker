@@ -4,3 +4,5 @@ data/
 *.db-*
 .DS_Store
 demo-data/
+.dev.vars
+.wrangler/

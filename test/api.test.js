@@ -1,16 +1,21 @@
 // End-to-end API tests against a throwaway database.
-const { test, before, after } = require('node:test');
-const assert = require('node:assert');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
+import { test, before, after } from 'node:test';
+import assert from 'node:assert';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createServer } from '../server.js';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'parsley-test-'));
-process.env.ADMIN_PASSWORD = 'secret-admin';
-const { server } = require('../server.js');
-let base;
-before(() => new Promise((r) => server.listen(0, () => { base = `http://127.0.0.1:${server.address().port}`; r(); })));
-after(() => { server.close(); fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true }); });
+// Set BASE_URL to run the same tests against a running instance (e.g. `wrangler dev`).
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'parsley-test-'));
+let base = process.env.BASE_URL, server;
+before(async () => {
+  if (base) return;
+  ({ server } = createServer({ dataDir, adminPassword: 'secret-admin' }));
+  await new Promise((r) => server.listen(0, r));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+after(() => { server?.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
 
 function client() {
   let cookie = '';
