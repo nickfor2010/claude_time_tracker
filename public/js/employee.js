@@ -103,6 +103,8 @@ async function loadMe() {
 }
 
 const serverNow = () => Date.now() - (me?.skew || 0);
+// An open shift from an earlier day, or longer than 12 hours, is probably a forgotten clock-out.
+const isStale = (s) => !s.clock_out && (dayKey(s.clock_in) !== me.today || serverNow() - s.clock_in > 12 * 3600e3);
 
 function renderPunch() {
   const e = me.employee;
@@ -167,7 +169,9 @@ function paintLive() {
     : `${icons.in}<span class="big">Clock in</span><span class="sub">${me.todayMs ? 'Start another shift' : 'Start your day'}</span>`;
   if (core.innerHTML !== html) core.innerHTML = html;
   btn.setAttribute('aria-label', open ? 'Clock out' : 'Clock in');
-  $('#status').innerHTML = open
+  $('#status').innerHTML = open && isStale(open)
+    ? `<span class="pill pill-warn"><span class="dot"></span>Still clocked in since ${dateLabel(dayKey(open.clock_in))}, ${time(open.clock_in)}. Forgot? Tell your manager.</span>`
+    : open
     ? `<span class="pill pill-live"><span class="dot"></span>Clocked in at ${time(open.clock_in)}</span>`
     : `<span class="pill"><span class="dot"></span>Off the clock</span>`;
 }
@@ -185,6 +189,7 @@ async function punch() {
   const btn = $('#punch');
   if (btn.classList.contains('busy')) return;
   if (me.open && worked(me.open, serverNow()) < 60e3 && !confirm('You clocked in less than a minute ago. Clock out anyway?')) return;
+  if (me.open && isStale(me.open) && !confirm(`You've been clocked in since ${dateLabel(dayKey(me.open.clock_in))}, ${time(me.open.clock_in)} (${dur(worked(me.open, serverNow()))}).\n\nIf you forgot to clock out, your manager can fix the time. Clock out now anyway?`)) return;
   btn.classList.add('busy');
   try {
     const loc = await getLocation();

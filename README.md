@@ -14,6 +14,12 @@ A time clock for the Parsley team. Staff install it on their phones and tap a bu
   - optional location stamp on each punch
 - **Runs on Cloudflare (free)** using Workers and a D1 database. It also runs on any server with Node.js 22.13 or newer, which uses Node's built-in SQLite.
 
+## Fixing mistakes
+
+In **Timesheets**, tap ✏️ on any shift to change the clock-in or clock-out time, add break minutes or a note, or delete it. **+ Add shift** records a shift someone forgot to punch. Edited shifts are marked *edited*, and the employee sees "adjusted by manager".
+
+If someone stays clocked in longer than the warning time (12 hours by default; change it in Settings), or since a previous day, a red warning appears at the top of the dashboard with a **Fix** button. The employee's phone also tells them to contact the manager.
+
 ## Put it online with Cloudflare (free)
 
 `wrangler.jsonc` holds all the settings. The first time the app is published, Cloudflare creates the database automatically.

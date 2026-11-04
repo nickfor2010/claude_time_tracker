@@ -74,6 +74,12 @@ test('full punch flow', async () => {
   assert.match(csv, /Employee,Date,Clock in,Clock out/);
   assert.match(csv, /TOTAL Vera/);
 
+  // Forgotten clock-out warning threshold
+  assert.equal((await admin('/api/admin/overview')).data.alertHours, 12);
+  assert.equal((await admin('/api/admin/settings', { method: 'POST', body: { alert_hours: 30 } })).status, 400);
+  assert.equal((await admin('/api/admin/settings', { method: 'POST', body: { alert_hours: 10 } })).status, 200);
+  assert.equal((await admin('/api/admin/overview')).data.alertHours, 10);
+
   // Deactivating signs the phone out
   await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { active: false } });
   assert.equal((await phone('/api/me')).status, 401);

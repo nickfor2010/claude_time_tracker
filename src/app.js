@@ -182,12 +182,12 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     const monthStart = today.slice(0, 8) + '01';
     const chartStart = addDays(today, -13);
     const from = [monthStart, weekStart, chartStart].sort()[0];
-    const [employees, shifts, onShift, activity, company, adminDefault, geo] = await Promise.all([
+    const [employees, shifts, onShift, activity, company, adminDefault, geo, alertHours] = await Promise.all([
       db.all('SELECT * FROM employees ORDER BY created_at'),
       shiftsInRange(from, today),
       db.all('SELECT s.*, e.name, e.color, e.role FROM shifts s JOIN employees e ON e.id = s.employee_id WHERE s.clock_out IS NULL ORDER BY s.clock_in'),
       db.all('SELECT s.*, e.name, e.color FROM shifts s JOIN employees e ON e.id = s.employee_id ORDER BY MAX(s.clock_in, COALESCE(s.clock_out, 0)) DESC LIMIT 12'),
-      getSetting('company'), getSetting('admin_default'), getSetting('geo'),
+      getSetting('company'), getSetting('admin_default'), getSetting('geo'), getSetting('alert_hours'),
     ]);
     const days = Array.from({ length: 14 }, (_, i) => ({ date: addDays(chartStart, i), byEmp: {} }));
     const totals = { todayMs: 0, weekMs: 0, monthMs: 0, monthPay: 0 };
@@ -201,7 +201,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       if (d >= monthStart) { totals.monthMs += w; pe.monthMs += w; totals.monthPay += (w / 3600e3) * (s.hourly_rate || 0); }
     }
     return {
-      now, today, timezone: TZ, company, geo: geo === '1', adminDefaultPassword: adminDefault === '1',
+      now, today, timezone: TZ, company, geo: geo === '1', adminDefaultPassword: adminDefault === '1', alertHours: Number(alertHours) || 12,
       employees: employees.map((e) => ({ ...publicEmployee(e), ...perEmp[e.id], onShift: onShift.some((s) => s.employee_id === e.id) })),
       totals, onShift, days, activity,
     };
@@ -355,6 +355,11 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         }
         if (b.company?.trim()) await setSetting('company', b.company.trim().slice(0, 60));
         if (b.geo !== undefined) await setSetting('geo', b.geo ? '1' : '0');
+        if (b.alert_hours !== undefined) {
+          const h = Number(b.alert_hours);
+          if (!(h >= 1 && h <= 24)) throw new HttpError(400, 'Warning time must be between 1 and 24 hours');
+          await setSetting('alert_hours', String(h));
+        }
         return json(200, { ok: true });
       }
     }

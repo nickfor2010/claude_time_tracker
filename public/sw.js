@@ -1,5 +1,5 @@
 // Parsley Time service worker: app shell offline, API always from the network.
-const CACHE = 'parsley-time-v3';
+const CACHE = 'parsley-time-v4';
 const SHELL = ['/', '/index.html', '/admin.html', '/css/app.css', '/js/common.js', '/js/employee.js', '/js/admin.js',
   '/icons/icon-192.png', '/favicon.ico', '/manifest.webmanifest'];
 

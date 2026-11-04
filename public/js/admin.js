@@ -63,10 +63,20 @@ async function refresh() {
   } catch (e) { if (e.status === 401) return boot(); toast(e.message, true); }
   render();
 }
+// Open shifts that look like a forgotten clock-out: longer than the warning time, or started on an earlier day.
+const isForgotten = (s, d = state.data) => !s.clock_out && (d.now - s.clock_in > d.alertHours * 3600e3 || dayKey(s.clock_in) !== d.today);
+
 function render() {
   const d = state.data;
-  $('#banner').innerHTML = d.adminDefaultPassword
-    ? `<div class="banner">${icons.alert}<span>You're using the default admin password. Please change it.</span><button class="btn btn-sm btn-ghost" data-goto="settings">Change now</button></div>` : '';
+  const forgotten = d.onShift.filter((s) => isForgotten(s));
+  $('#banner').innerHTML = forgotten.map((s) => `
+    <div class="banner banner-warn" role="alert">${icons.alert}
+      <span><b>${esc(s.name)}</b> has been clocked in for <b class="tnum" data-since="${s.clock_in}">${dur(d.now - s.clock_in)}</b>
+        (since ${dayKey(s.clock_in) === d.today ? '' : dateLabel(dayKey(s.clock_in)) + ', '}${time(s.clock_in)}). Forgot to clock out?</span>
+      <button class="btn btn-sm btn-primary" data-fix="${s.id}">Fix</button>
+    </div>`).join('') + (d.adminDefaultPassword
+    ? `<div class="banner">${icons.alert}<span>You're using the default admin password. Please change it.</span><button class="btn btn-sm btn-ghost" data-goto="settings">Change now</button></div>` : '');
+  $('#banner').querySelectorAll('[data-fix]').forEach((b) => (b.onclick = () => openShift(d.onShift.find((s) => s.id === Number(b.dataset.fix)), { forgot: true })));
   $('#side-live').innerHTML = `<b>${d.onShift.length}</b> of ${d.employees.filter((e) => e.active).length} on shift now<br>${dateLabel(d.today, { weekday: 'long', month: 'long', day: 'numeric' })}`;
   ({ overview: renderOverview, timesheets: renderTimesheets, team: renderTeam, settings: renderSettings })[state.page]();
   clearInterval(liveTimer);
@@ -107,7 +117,7 @@ function renderOverview() {
         <div class="panel-head"><h2>Team today</h2><span class="muted">${d.onShift.length} working</span></div>
         <div class="who">${active.length ? active.sort((a, b) => b.onShift - a.onShift || b.todayMs - a.todayMs).map((e) => {
           const open = d.onShift.find((s) => s.employee_id === e.id);
-          return `<div class="who-row">${avatar(e, open ? 'on' : '')}<div><div class="nm">${esc(e.name)}</div><div class="s">${open ? `In since ${time(open.clock_in)}` : e.todayMs ? `Worked ${dur(e.todayMs)} today` : 'Not in today'}</div></div>
+          return `<div class="who-row">${avatar(e, open ? 'on' : '')}<div><div class="nm">${esc(e.name)}</div><div class="s">${open && isForgotten(open) ? `<span style="color:var(--clay);font-weight:600">No clock-out since ${dayKey(open.clock_in) === d.today ? '' : dateLabel(dayKey(open.clock_in)) + ' '}${time(open.clock_in)}</span>` : open ? `In since ${time(open.clock_in)}` : e.todayMs ? `Worked ${dur(e.todayMs)} today` : 'Not in today'}</div></div>
             <div class="live">${open ? `<span data-since="${open.clock_in}" data-sec="1">${dur(d.now - open.clock_in, { seconds: true })}</span>` : `<span class="muted">${e.todayMs ? hours(e.todayMs) + 'h' : '—'}</span>`}</div></div>`;
         }).join('') : `<div class="empty">Add your team to get started.<br><br><button class="btn btn-primary btn-sm" data-goto="team">${icons.plus} Add team member</button></div>`}</div>
       </div>
@@ -230,7 +240,7 @@ function renderTimesheets() {
             <td>${dateLabel(s.day)}</td>
             <td><span class="emp">${avatar(s)}${esc(s.name)}</span></td>
             <td class="tnum">${time(s.clock_in)}${loc}</td>
-            <td class="tnum">${s.clock_out ? time(s.clock_out) : '<span class="tag live">ON SHIFT</span>'}</td>
+            <td class="tnum">${s.clock_out ? time(s.clock_out) : isForgotten(s) ? '<span class="tag warn">CHECK · NO CLOCK-OUT</span>' : '<span class="tag live">ON SHIFT</span>'}</td>
             <td class="num">${s.break_min ? s.break_min + 'm' : '—'}</td>
             <td class="num"><b>${s.clock_out ? dur(w) : `<span data-since="${s.clock_in}">${dur(w)}</span>`}</b></td>
             <td class="num">${money((w / 3600e3) * (s.hourly_rate || 0))}</td>
@@ -247,9 +257,9 @@ function renderTimesheets() {
 }
 
 // Shift dialog
-function openShift(s) {
+function openShift(s, { forgot = false } = {}) {
   const dlg = $('#dlg-shift');
-  $('#shift-title').textContent = s ? 'Edit shift' : 'Add shift';
+  $('#shift-title').textContent = forgot ? `Add clock-out for ${s.name}` : s ? 'Edit shift' : 'Add shift';
   $('#sh-emp').innerHTML = state.data.employees.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   $('#sh-emp').disabled = !!s;
   $('#sh-emp').value = s ? s.employee_id : state.empFilter || state.data.employees[0]?.id || '';
@@ -257,8 +267,9 @@ function openShift(s) {
   $('#sh-in').value = s ? hm24(s.clock_in) : '09:00';
   $('#sh-out').value = s?.clock_out ? hm24(s.clock_out) : s ? '' : '17:00';
   $('#sh-break').value = s?.break_min || 0;
-  $('#sh-note').value = s?.note || '';
+  $('#sh-note').value = s?.note || (forgot ? 'Forgot to clock out' : '');
   $('#sh-err').textContent = '';
+  $('#sh-hint').textContent = forgot ? `Clocked in ${dateLabel(dayKey(s.clock_in))} at ${time(s.clock_in)}. Enter the time they really left.` : '';
   $('#sh-del').classList.toggle('hidden', !s);
   $('#sh-del').onclick = async () => {
     if (!confirm('Delete this shift? This cannot be undone.')) return;
@@ -276,6 +287,7 @@ function openShift(s) {
   };
   if (!state.data.employees.length) return toast('Add a team member first', true);
   dlg.showModal();
+  if (forgot) $('#sh-out').focus();
 }
 
 // ---------- team ----------
@@ -331,6 +343,7 @@ function renderSettings() {
         <h2>Business</h2><p>Shown on the time clock.</p>
         <div class="field"><label for="s-company">Business name</label><input class="input" id="s-company" value="${esc(d.company)}" maxlength="60"></div>
         <label class="check"><input type="checkbox" id="s-geo" ${d.geo ? 'checked' : ''}> Record location when employees punch</label>
+        <div class="field"><label for="s-alert">Warn me when someone is clocked in longer than (hours)</label><input class="input" type="number" min="1" max="24" step="1" id="s-alert" value="${d.alertHours}" style="max-width:120px"></div>
         <p class="muted" style="margin:0">Timezone: <b>${esc(d.timezone)}</b> (set with the APP_TIMEZONE variable on the server).</p>
         <button class="btn btn-primary" style="justify-self:start">Save</button>
       </form>
@@ -344,8 +357,7 @@ function renderSettings() {
     </div>`;
   $('#f-company').onsubmit = async (ev) => {
     ev.preventDefault();
-    await api('/api/admin/settings', { method: 'POST', body: { company: $('#s-company').value, geo: $('#s-geo').checked } });
-    toast('Settings saved'); refresh();
+    await api('/api/admin/settings', { method: 'POST', body: { company: $('#s-company').value, geo: $('#s-geo').checked, alert_hours: Number($('#s-alert').value) } }).then(() => { toast('Settings saved'); refresh(); }, (e) => toast(e.message, true));
   };
   $('#f-pass').onsubmit = async (ev) => {
     ev.preventDefault();
