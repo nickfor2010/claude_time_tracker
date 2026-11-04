@@ -1,3 +1,4 @@
+import { createVapidKeys, sendPush } from './push.js';
 // Parsley Time — platform-independent API core.
 // Runs on Cloudflare Workers (D1) and on Node.js (node:sqlite) through a tiny async DB adapter:
 //   db.all(sql, params) -> rows, db.get(sql, params) -> row|null, db.run(sql, params) -> { lastId }, db.batch(sqls)
@@ -5,6 +6,11 @@
 const EMP_SESSION_DAYS = 180; // employees stay signed in on their phone
 const ADMIN_SESSION_HOURS = 12;
 const PBKDF2_ITERATIONS = 20000; // kept modest for the Workers CPU budget; logins are also rate-limited
+const LEAVE_TYPES = ['annual', 'personal', 'sick', 'other'];
+const LEAVE_LABEL = {
+  en: { annual: 'Annual leave', personal: 'Personal leave', sick: 'Sick leave', other: 'Day off' },
+  zh: { annual: '特休', personal: '事假', sick: '病假', other: '休假' },
+};
 // Categorical palette (validated for colour-blind separation), assigned in order.
 const EMPLOYEE_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 
@@ -19,6 +25,13 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, kind TEXT NOT NULL, employee_id INTEGER, expires INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`,
   `CREATE TABLE IF NOT EXISTS login_attempts (ip TEXT PRIMARY KEY, count INTEGER NOT NULL, first INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS leave_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+     type TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, half_day INTEGER DEFAULT 0, note TEXT DEFAULT '',
+     status TEXT NOT NULL DEFAULT 'pending', manager_note TEXT DEFAULT '', created_at INTEGER NOT NULL, decided_at INTEGER, seen INTEGER DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS idx_leave_emp ON leave_requests(employee_id, start_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_leave_status ON leave_requests(status, start_date)`,
+  `CREATE TABLE IF NOT EXISTS push_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, employee_id INTEGER, endpoint TEXT NOT NULL,
+     p256dh TEXT NOT NULL, auth TEXT NOT NULL, lang TEXT DEFAULT 'en', created_at INTEGER NOT NULL, UNIQUE(endpoint, role))`,
 ];
 
 // ---------- crypto ----------
@@ -166,6 +179,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       todayShifts: shifts.filter((s) => dayKey(s.clock_in) === today).sort((a, b) => a.clock_in - b.clock_in),
       recent: recentPast,
       week, todayMs, monthMs, now, today, timezone: TZ, geo: (await getSetting('geo')) === '1',
+      leaveNotices: (await db.all("SELECT * FROM leave_requests WHERE employee_id = ? AND seen = 0 AND status IN ('approved', 'rejected') ORDER BY decided_at", [emp.id])).map(withDays),
     };
   }
 
@@ -183,12 +197,15 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     const monthStart = today.slice(0, 8) + '01';
     const chartStart = addDays(today, -13);
     const from = [monthStart, weekStart, chartStart].sort()[0];
-    const [employees, shifts, onShift, activity, company, adminDefault, geo, alertHours] = await Promise.all([
+    const [employees, shifts, onShift, activity, company, adminDefault, geo, alertHours, pendingLeave, leaveSoon] = await Promise.all([
       db.all('SELECT * FROM employees ORDER BY created_at'),
       shiftsInRange(from, today),
       db.all('SELECT s.*, e.name, e.color, e.role FROM shifts s JOIN employees e ON e.id = s.employee_id WHERE s.clock_out IS NULL ORDER BY s.clock_in'),
       db.all('SELECT s.*, e.name, e.color FROM shifts s JOIN employees e ON e.id = s.employee_id ORDER BY MAX(s.clock_in, COALESCE(s.clock_out, 0)) DESC LIMIT 12'),
       getSetting('company'), getSetting('admin_default'), getSetting('geo'), getSetting('alert_hours'),
+      db.get("SELECT COUNT(*) AS n FROM leave_requests WHERE status = 'pending'"),
+      db.all(`SELECT l.*, e.name, e.color FROM leave_requests l JOIN employees e ON e.id = l.employee_id
+        WHERE l.status = 'approved' AND l.end_date >= ? AND l.start_date <= ? ORDER BY l.start_date`, [today, addDays(today, 13)]),
     ]);
     const days = Array.from({ length: 14 }, (_, i) => ({ date: addDays(chartStart, i), byEmp: {} }));
     const totals = { todayMs: 0, weekMs: 0, monthMs: 0, monthPay: 0 };
@@ -205,6 +222,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       now, today, timezone: TZ, company, geo: geo === '1', adminDefaultPassword: adminDefault === '1', alertHours: Number(alertHours) || 12,
       employees: employees.map((e) => ({ ...publicEmployee(e), ...perEmp[e.id], onShift: onShift.some((s) => s.employee_id === e.id) })),
       totals, onShift, days, activity,
+      pendingLeave: pendingLeave.n, leaveSoon: leaveSoon.map(withDays),
     };
   }
 
@@ -241,8 +259,65 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     return { cin, cout };
   }
 
+  // ---------- time off ----------
+  const leaveDays = (r) => (r.half_day ? 0.5 : Math.round((Date.parse(r.end_date) - Date.parse(r.start_date)) / 86400e3) + 1);
+  const withDays = (r) => ({ ...r, days: leaveDays(r) });
+  const fmtRange = (r, lang) => {
+    const f = (d) => new Intl.DateTimeFormat(lang === 'zh' ? 'zh-TW' : 'en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(new Date(d + 'T00:00:00Z'));
+    return r.start_date === r.end_date ? f(r.start_date) : `${f(r.start_date)} – ${f(r.end_date)}`;
+  };
+
+  // ---------- push notifications ----------
+  async function vapid() {
+    let keys = await getSetting('vapid');
+    if (!keys) {
+      keys = JSON.stringify(await createVapidKeys());
+      await db.run('INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO NOTHING', ['vapid', keys]);
+      keys = await getSetting('vapid');
+    }
+    return JSON.parse(keys);
+  }
+  // Sends a message (built per language) to every device of the given role / employee.
+  async function notify(role, employeeId, build, origin) {
+    const subs = role === 'admin'
+      ? await db.all("SELECT * FROM push_subs WHERE role = 'admin'")
+      : await db.all("SELECT * FROM push_subs WHERE role = 'emp' AND employee_id = ?", [employeeId]);
+    if (!subs.length) return;
+    const keys = await vapid();
+    const subject = origin.startsWith('https:') ? origin : 'https://parsley-time.workers.dev';
+    await Promise.all(subs.map(async (sub) => {
+      const r = await sendPush(sub, build(sub.lang === 'zh' ? 'zh' : 'en'), keys, subject);
+      if (r === 'gone') await db.run('DELETE FROM push_subs WHERE id = ?', [sub.id]);
+    }));
+  }
+
   // routes
-  async function route(req, ip) {
+  async function route(req, ip, defer) {
+    const origin = new URL(req.url).origin;
+    const later = (promise) => defer(promise.catch((e) => console.error('push failed', e)));
+    async function pushRoutes(req, p, m, role, employeeId) {
+      if (role === 'admin' && !(await getSession(req, 'admin'))) throw new HttpError(401, 'Not signed in');
+      if (p === '/api/push/subscribe' && m === 'POST') {
+        const { subscription: sub, lang } = await readBody(req);
+        const endpoint = sub?.endpoint, p256dh = sub?.keys?.p256dh, auth = sub?.keys?.auth;
+        if (typeof endpoint !== 'string' || !/^https:\/\//.test(endpoint) || typeof p256dh !== 'string' || typeof auth !== 'string') throw new HttpError(400, 'Invalid subscription');
+        await db.run(`INSERT INTO push_subs(role, employee_id, endpoint, p256dh, auth, lang, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(endpoint, role) DO UPDATE SET employee_id = excluded.employee_id, p256dh = excluded.p256dh, auth = excluded.auth, lang = excluded.lang`,
+          [role, employeeId, endpoint, p256dh, auth, lang === 'zh' ? 'zh' : 'en', Date.now()]);
+        return json(200, { ok: true });
+      }
+      if (p === '/api/push/unsubscribe' && m === 'POST') {
+        const { endpoint } = await readBody(req);
+        await db.run('DELETE FROM push_subs WHERE endpoint = ? AND role = ?', [String(endpoint || ''), role]);
+        return json(200, { ok: true });
+      }
+      if (p === '/api/push/test' && m === 'POST') {
+        const { lang } = await readBody(req);
+        later(notify(role, employeeId, (l) => ({ title: 'Parsley', body: l === 'zh' ? '通知已開啟 ✓' : 'Notifications are on ✓', url: role === 'admin' ? '/admin#timeoff' : '/' }), origin));
+        return json(200, { ok: true, lang });
+      }
+      throw new HttpError(404, 'Not found');
+    }
     const url = new URL(req.url);
     const p = url.pathname, m = req.method;
 
@@ -260,6 +335,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       if (!emp || !(await verifySecret(String(pin ?? ''), emp.pin_hash))) throw new HttpError(401, 'Wrong PIN');
       return json(200, { ok: true }, { 'Set-Cookie': await createSession(req, 'emp', emp.id, EMP_SESSION_DAYS * 86400e3) });
     }
+    if (p === '/api/push/key' && m === 'GET') return json(200, { publicKey: (await vapid()).publicKey });
     if (p === '/api/admin/login' && m === 'POST') {
       if (await rateLimited(ip)) throw new HttpError(429, 'Too many attempts. Try again in 15 minutes.');
       const { password } = await readBody(req);
@@ -269,7 +345,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
 
     // Employee
     if (p === '/api/logout' && m === 'POST') return json(200, { ok: true }, { 'Set-Cookie': await clearSession(req, 'emp') });
-    if (p === '/api/me' || p === '/api/punch') {
+    if (p === '/api/me' || p === '/api/punch' || p.startsWith('/api/leave') || (p.startsWith('/api/push/') && p !== '/api/push/key')) {
+      if (p.startsWith('/api/push/') && new URL(req.url).searchParams.get('role') === 'admin') return pushRoutes(req, p, m, 'admin', null);
       const s = await getSession(req, 'emp');
       const emp = s && await db.get('SELECT * FROM employees WHERE id = ? AND active = 1', [s.employee_id]);
       if (!emp) throw new HttpError(401, 'Not signed in');
@@ -281,6 +358,41 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         if (open) await db.run('UPDATE shifts SET clock_out = ?, out_lat = ?, out_lng = ? WHERE id = ?', [now, num(lat), num(lng), open.id]);
         else await db.run('INSERT INTO shifts(employee_id, clock_in, in_lat, in_lng) VALUES(?, ?, ?, ?)', [emp.id, now, num(lat), num(lng)]);
         return json(200, { action: open ? 'out' : 'in', at: now, ...(await employeeSummary(emp)) });
+      }
+      if (p.startsWith('/api/push/')) return pushRoutes(req, p, m, 'emp', emp.id);
+
+      if (p === '/api/leave' && m === 'GET') {
+        const rows = await db.all('SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY start_date DESC, id DESC LIMIT 30', [emp.id]);
+        return json(200, { requests: rows.map(withDays) });
+      }
+      if (p === '/api/leave' && m === 'POST') {
+        const b = await readBody(req);
+        if (!LEAVE_TYPES.includes(b.type)) throw new HttpError(400, 'Choose a type of leave');
+        if (!isDate(b.start) || !isDate(b.end)) throw new HttpError(400, 'Choose the dates');
+        if (b.end < b.start) throw new HttpError(400, 'The end date is before the start date');
+        if (leaveDays({ start_date: b.start, end_date: b.end }) > 60) throw new HttpError(400, 'A request can be at most 60 days');
+        const half = b.half && b.start === b.end ? 1 : 0;
+        const { lastId } = await db.run('INSERT INTO leave_requests(employee_id, type, start_date, end_date, half_day, note, status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)',
+          [emp.id, b.type, b.start, b.end, half, String(b.note || '').slice(0, 300), 'pending', Date.now()]);
+        const r = await db.get('SELECT * FROM leave_requests WHERE id = ?', [lastId]);
+        later(notify('admin', null, (lang) => ({
+          title: lang === 'zh' ? `${emp.name} 申請${LEAVE_LABEL.zh[r.type]}` : `${emp.name} asked for time off`,
+          body: `${LEAVE_LABEL[lang][r.type]} · ${fmtRange(r, lang)}${r.half_day ? (lang === 'zh' ? '（半天）' : ' (half day)') : ''}${r.note ? ` · ${r.note}` : ''}`,
+          url: '/admin#timeoff', tag: `leave-${r.id}`,
+        }), origin));
+        return json(201, withDays(r));
+      }
+      let lm;
+      if ((lm = p.match(/^\/api\/leave\/(\d+)\/cancel$/)) && m === 'POST') {
+        const r = await db.get('SELECT * FROM leave_requests WHERE id = ? AND employee_id = ?', [Number(lm[1]), emp.id]);
+        if (!r) throw new HttpError(404, 'Request not found');
+        if (r.status !== 'pending') throw new HttpError(400, 'Only a pending request can be cancelled');
+        await db.run("UPDATE leave_requests SET status = 'cancelled', decided_at = ?, seen = 1 WHERE id = ?", [Date.now(), r.id]);
+        return json(200, { ok: true });
+      }
+      if (p === '/api/leave/seen' && m === 'POST') {
+        await db.run("UPDATE leave_requests SET seen = 1 WHERE employee_id = ? AND status IN ('approved', 'rejected')", [emp.id]);
+        return json(200, { ok: true });
       }
     }
 
@@ -343,6 +455,29 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         }
       }
 
+      if (p === '/api/admin/leave' && m === 'GET') {
+        const rows = await db.all(`SELECT l.*, e.name, e.color FROM leave_requests l JOIN employees e ON e.id = l.employee_id
+          WHERE l.status = 'pending' OR l.end_date >= ? OR l.created_at >= ? ORDER BY l.start_date DESC, l.id DESC LIMIT 200`,
+          [addDays(dayKey(Date.now()), -60), Date.now() - 60 * 86400e3]);
+        return json(200, { today: dayKey(Date.now()), requests: rows.map(withDays) });
+      }
+      if ((mm = p.match(/^\/api\/admin\/leave\/(\d+)$/)) && m === 'POST') {
+        const b = await readBody(req);
+        if (!['approved', 'rejected'].includes(b.status)) throw new HttpError(400, 'Invalid decision');
+        const r = await db.get('SELECT l.*, e.name FROM leave_requests l JOIN employees e ON e.id = l.employee_id WHERE l.id = ?', [Number(mm[1])]);
+        if (!r) throw new HttpError(404, 'Request not found');
+        if (r.status === 'cancelled') throw new HttpError(400, 'This request was cancelled');
+        const note = String(b.manager_note || '').slice(0, 300);
+        await db.run('UPDATE leave_requests SET status = ?, manager_note = ?, decided_at = ?, seen = 0 WHERE id = ?', [b.status, note, Date.now(), r.id]);
+        const ok = b.status === 'approved';
+        later(notify('emp', r.employee_id, (lang) => ({
+          title: lang === 'zh' ? (ok ? '休假已核准 ✓' : '休假未核准') : (ok ? 'Time off approved ✓' : 'Time off declined'),
+          body: `${LEAVE_LABEL[lang][r.type]} · ${fmtRange(r, lang)}${note ? ` · ${note}` : ''}`,
+          url: '/#timeoff', tag: `leave-${r.id}`,
+        }), origin));
+        return json(200, { ok: true });
+      }
+
       if (p === '/api/admin/export.csv' && m === 'GET') {
         const from = url.searchParams.get('from'), to = url.searchParams.get('to');
         if (!isDate(from) || !isDate(to)) throw new HttpError(400, 'from/to required');
@@ -375,12 +510,12 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     ready: ensureReady,
     time: { dayKey, zonedToMs },
     // Returns a Response for API routes, or null so the host can serve static files.
-    async handle(req, { ip = 'unknown' } = {}) {
+    async handle(req, { ip = 'unknown', defer = (pr) => { pr.catch(() => {}); } } = {}) {
       const p = new URL(req.url).pathname;
       if (!p.startsWith('/api/') && p !== '/healthz') return null;
       try {
         await ensureReady();
-        return await route(req, ip);
+        return await route(req, ip, defer);
       } catch (err) {
         if (!(err instanceof HttpError)) console.error(err);
         return json(err.status || 500, { error: err instanceof HttpError ? err.message : 'Server error' });

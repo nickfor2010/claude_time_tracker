@@ -1,0 +1,16 @@
+{
+  "id": "/admin",
+  "name": "Parsley Dashboard",
+  "short_name": "Parsley 管理",
+  "description": "Parsley manager dashboard: hours, timesheets and time-off requests.",
+  "start_url": "/admin",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f9f6f1",
+  "theme_color": "#6e1e2e",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

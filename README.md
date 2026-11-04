@@ -14,6 +14,16 @@ A time clock for the Parsley team. Staff install it on their phones and tap a bu
   - optional location stamp on each punch
 - **Runs on Cloudflare (free)** using Workers and a D1 database. It also runs on any server with Node.js 22.13 or newer, which uses Node's built-in SQLite.
 
+## Time off (休假)
+
+Staff tap **Time off → Request** on their phone, then choose the type (annual 特休, personal 事假, sick 病假, other), the dates (or a half day) and a reason. The manager sees a badge and a banner, and approves or declines in **Time off** with an optional reply. The employee sees the answer the next time they open the app.
+
+**Phone notifications.** On the Time off page (manager) or under Time off (staff), tap **Turn on** on each phone that should be notified.
+- **iPhone (iOS 16.4 or newer):** first add the page to the Home Screen and open it from there. The dashboard installs as its own app, "Parsley 管理".
+- **Android:** works in Chrome directly.
+
+Notifications are sent with standard Web Push. No outside service or account is needed, and the keys are created automatically.
+
 ## Languages (English / 繁體中文)
 
 Every screen comes in English and Traditional Chinese (Taiwan). A phone set to Chinese opens in Chinese automatically, and the **中文 / EN** button switches language at any time. Each phone or computer remembers its own choice. The CSV export follows the dashboard language. All texts live in `public/js/i18n.js`.

@@ -83,6 +83,38 @@ test('full punch flow', async () => {
   assert.equal((await admin('/api/admin/settings', { method: 'POST', body: { alert_hours: 10 } })).status, 200);
   assert.equal((await admin('/api/admin/overview')).data.alertHours, 10);
 
+  // Time off: request -> pending count -> approve -> employee notice -> seen
+  assert.equal((await phone('/api/leave', { method: 'POST', body: { type: 'annual', start: '2026-12-10', end: '2026-12-08' } })).status, 400);
+  assert.equal((await phone('/api/leave', { method: 'POST', body: { type: 'party', start: '2026-12-10', end: '2026-12-10' } })).status, 400);
+  const req1 = (await phone('/api/leave', { method: 'POST', body: { type: 'annual', start: '2026-12-10', end: '2026-12-12', note: 'Family trip' } })).data;
+  assert.equal(req1.status, 'pending');
+  assert.equal(req1.days, 3);
+  const req2 = (await phone('/api/leave', { method: 'POST', body: { type: 'personal', start: '2026-12-20', end: '2026-12-20', half: true } })).data;
+  assert.equal(req2.days, 0.5);
+  assert.equal((await admin('/api/admin/overview')).data.pendingLeave, 2);
+  assert.equal((await phone(`/api/leave/${req2.id}/cancel`, { method: 'POST' })).status, 200);
+  assert.equal((await admin('/api/admin/overview')).data.pendingLeave, 1);
+  assert.equal((await admin(`/api/admin/leave/${req2.id}`, { method: 'POST', body: { status: 'approved' } })).status, 400);
+  assert.equal((await admin(`/api/admin/leave/${req1.id}`, { method: 'POST', body: { status: 'approved', manager_note: 'Enjoy!' } })).status, 200);
+  const me2 = (await phone('/api/me')).data;
+  assert.equal(me2.leaveNotices.length, 1);
+  assert.equal(me2.leaveNotices[0].manager_note, 'Enjoy!');
+  await phone('/api/leave/seen', { method: 'POST' });
+  assert.equal((await phone('/api/me')).data.leaveNotices.length, 0);
+  const all = (await admin('/api/admin/leave')).data.requests;
+  assert.equal(all.find((r) => r.id === req1.id).status, 'approved');
+  assert.equal(all.find((r) => r.id === req1.id).name, 'Vera');
+  // other employees / logged-out users cannot touch requests
+  assert.equal((await client()('/api/leave')).status, 401);
+  assert.equal((await client()('/api/admin/leave')).status, 401);
+  // push key + subscription storage
+  const key = (await phone('/api/push/key')).data.publicKey;
+  assert.equal(key.length, 87);
+  assert.equal((await phone('/api/push/subscribe', { method: 'POST', body: { subscription: { endpoint: 'http://bad' } } })).status, 400);
+  assert.equal((await phone('/api/push/subscribe', { method: 'POST', body: { subscription: { endpoint: 'https://push.example/1', keys: { p256dh: 'x', auth: 'y' } }, lang: 'zh' } })).status, 200);
+  assert.equal((await client()('/api/push/subscribe?role=admin', { method: 'POST', body: { subscription: { endpoint: 'https://push.example/2', keys: { p256dh: 'x', auth: 'y' } } } })).status, 401);
+  assert.equal((await admin('/api/push/subscribe?role=admin', { method: 'POST', body: { subscription: { endpoint: 'https://push.example/2', keys: { p256dh: 'x', auth: 'y' } } } })).status, 200);
+
   // Deactivating signs the phone out
   await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { active: false } });
   assert.equal((await phone('/api/me')).status, 401);

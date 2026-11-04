@@ -321,3 +321,58 @@ dialog h3 { margin: 0; font-size: 19px; font-family: var(--font-display); font-w
 }
 @media (max-width: 380px) { .pinpad { grid-template-columns: repeat(3, 68px); gap: 12px 18px; } .pinpad button { width: 68px; height: 68px; } .team-grid { grid-template-columns: repeat(2, 1fr); } }
 .mobile-top { display: none; }
+
+/* ============ Time off ============ */
+.section-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.section-row .btn { text-transform: none; letter-spacing: 0; }
+.seg { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.seg button { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 8px; font-weight: 600; font-size: 14px; color: var(--ink-2); }
+.seg button[aria-checked="true"] { border-color: var(--primary); background: var(--tint); color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+textarea.input { resize: vertical; min-height: 64px; }
+.pill.st-pending { background: color-mix(in srgb, var(--orange) 14%, var(--surface)); color: var(--orange-700); }
+.pill.st-approved { background: #e6f4ea; color: #1e7b3c; }
+.pill.st-rejected { background: color-mix(in srgb, var(--clay) 12%, var(--surface)); color: var(--clay); }
+.pill.st-cancelled { background: var(--surface-2); color: var(--ink-3); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pill.st-approved { background: #173524; color: #7fd69c; } }
+:root[data-theme="dark"] .pill.st-approved { background: #173524; color: #7fd69c; }
+.lv-row { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+.lv-row:last-child { border-bottom: none; }
+.lv-row .tl-main .t { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.lv-row .reply { margin-top: 6px; font-size: 13px; color: var(--ink-2); background: var(--surface-2); border-radius: 10px; padding: 6px 10px; }
+.lv-row .btn { margin-top: 2px; }
+.notice { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 16px; margin: 4px 0 10px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm); }
+.notice .ico { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; color: #fff; }
+.notice .ico svg { width: 18px; height: 18px; }
+.notice.ok .ico { background: #1e9e4a; }
+.notice.no .ico { background: var(--clay); }
+.notice b { display: block; }
+.notice .s { font-size: 13.5px; color: var(--ink-2); }
+.notice .btn { margin-left: auto; }
+.notif-card { margin-top: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; font-size: 13.5px; }
+.notif-card svg { width: 20px; height: 20px; color: var(--primary); flex: none; }
+.notif-card .btn { margin-left: auto; flex: none; }
+.nav .badge, .mobile-nav .badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 11.5px; font-weight: 700; display: inline-grid; place-items: center; }
+.mobile-nav button { position: relative; }
+.mobile-nav .badge { position: absolute; top: 2px; left: calc(50% + 6px); margin: 0; }
+.banner-leave { background: color-mix(in srgb, var(--orange) 12%, var(--surface)); border-color: color-mix(in srgb, var(--orange) 40%, transparent); }
+.banner-leave svg { color: var(--orange-700); }
+.req-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.req { padding: 16px; display: grid; gap: 12px; }
+.req-top { display: flex; gap: 12px; align-items: center; }
+.req-top .avatar { width: 42px; height: 42px; }
+.req-top .nm { font-weight: 700; font-size: 16px; }
+.req-top .s { font-size: 12.5px; color: var(--ink-3); }
+.req .when { font-weight: 700; font-size: 17px; }
+.req .why { font-size: 14px; color: var(--ink-2); background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }
+.req .acts { display: flex; gap: 8px; }
+.req .acts .btn { flex: 1; }
+.btn-approve { background: #1e7b3c; color: #fff; }
+.btn-approve:hover { background: #18692f; }
+.mobile-nav { grid-template-columns: repeat(5, 1fr) !important; }
+
+/* keep dialog forms inside narrow phone screens (date inputs have a wide intrinsic size) */
+dialog form > *, .row-2 > *, .row-3 > *, .field { min-width: 0; }
+.input[type="date"], .input[type="time"], .input[type="month"] { min-width: 0; max-width: 100%; }
+dialog { overflow-x: hidden; }
+.pill { white-space: nowrap; }
+.pill-warn { white-space: normal; }

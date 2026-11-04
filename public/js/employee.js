@@ -1,4 +1,4 @@
-import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, toast, registerSW, setTimezone, clockNow } from './common.js';
+import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, toast, registerSW, setTimezone, clockNow, pushStatus, enablePush, syncPush, LEAVE_TYPES, leaveLabel, leaveRange, statusPill } from './common.js';
 import { t, translatePage, langButton } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
@@ -8,6 +8,7 @@ const TARGET_MS = 8 * 3600e3; // ring fills over an 8-hour day
 const RING = 691.15;
 
 let me = null;          // /api/me payload
+let leave = [];         // my time-off requests
 let selected = null;    // employee chosen on the team screen
 let pin = '';
 let tick;
@@ -99,12 +100,13 @@ async function submitPin() {
 // ---------- punch screen ----------
 async function loadMe() {
   try {
-    me = await api('/api/me');
+    [me, { requests: leave }] = await Promise.all([api('/api/me'), api('/api/leave')]);
     me.skew = Date.now() - me.now; // keep the timer honest if the phone clock is off
     setTimezone(me.timezone);
     renderPunch();
     show('punch');
     paintClock();
+    if (location.hash === '#timeoff') { history.replaceState(null, '', '/'); $('#timeoff').scrollIntoView({ behavior: 'smooth' }); }
   } catch (e) {
     if (e.status === 401) return showTeam();
     toast(e.message, true);
@@ -149,7 +151,90 @@ function renderPunch() {
       <div class="tl-dur">${dur(worked(s))}</div>
     </div>`).join('') : `<div class="empty">${t('Your past shifts will appear here.')}</div>`;
 
+  renderLeave();
   paintLive();
+}
+
+// ---------- time off ----------
+function renderLeave() {
+  $('#leave-new').innerHTML = `${icons.plus} ${t('Request')}`;
+  // Answers from the manager that this person hasn't seen yet
+  $('#leave-notice').innerHTML = (me.leaveNotices || []).map((r) => {
+    const ok = r.status === 'approved';
+    return `<div class="notice ${ok ? 'ok' : 'no'}" role="status"><span class="ico">${ok ? icons.check : icons.x}</span>
+      <div><b>${ok ? t('Your time off was approved') : t('Your time off was declined')}</b>
+      <div class="s">${leaveLabel(r.type)} · ${leaveRange(r)}${r.manager_note ? `<br>“${esc(r.manager_note)}”` : ''}</div></div>
+      <button class="btn btn-ghost btn-sm" data-seen>${t('OK')}</button></div>`;
+  }).join('');
+  $('#leave-notice').querySelectorAll('[data-seen]').forEach((b) => (b.onclick = async () => {
+    await api('/api/leave/seen', { method: 'POST' }).catch(() => {});
+    me.leaveNotices = [];
+    $('#leave-notice').innerHTML = '';
+  }));
+
+  const visible = leave.filter((r) => r.status !== 'cancelled' || r.end_date >= me.today).slice(0, 8);
+  $('#leave-list').innerHTML = visible.length ? visible.map((r) => `
+    <div class="lv-row">
+      <div class="tl-ico">${icons.plane}</div>
+      <div class="tl-main"><div class="t">${leaveLabel(r.type)} ${statusPill(r.status)}</div>
+        <div class="s">${leaveRange(r)}</div>
+        ${r.note ? `<div class="s">${esc(r.note)}</div>` : ''}
+        ${r.manager_note ? `<div class="reply">${t('Manager')}: ${esc(r.manager_note)}</div>` : ''}</div>
+      ${r.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-cancel="${r.id}">${t('Cancel')}</button>` : ''}
+    </div>`).join('') : `<div class="empty">${t('No time-off requests yet.')}</div>`;
+  $('#leave-list').querySelectorAll('[data-cancel]').forEach((b) => (b.onclick = async () => {
+    if (!confirm(t('Cancel this request?'))) return;
+    try { await api(`/api/leave/${b.dataset.cancel}/cancel`, { method: 'POST' }); toast(t('Request cancelled')); loadMe(); }
+    catch (e) { toast(e.message, true); }
+  }));
+  renderNotifCard();
+}
+
+async function renderNotifCard() {
+  const card = $('#notif-card');
+  const st = await pushStatus().catch(() => 'unsupported');
+  const hasPending = leave.some((r) => r.status === 'pending');
+  if (st === 'on' || st === 'unsupported' || (!hasPending && st !== 'off')) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  card.innerHTML = st === 'install'
+    ? `${icons.bell}<span>${t('To get a notification when your manager replies, add this app to your Home Screen first.')}</span>`
+    : st === 'denied'
+    ? `${icons.bell}<span>${t('Notifications are blocked. Allow them in your phone settings.')}</span>`
+    : `${icons.bell}<span>${t('Get a notification when your manager replies.')}</span><button class="btn btn-primary btn-sm" id="notif-on">${t('Turn on')}</button>`;
+  const btn = $('#notif-on');
+  if (btn) btn.onclick = async () => {
+    try { await enablePush('emp'); toast(t('Notifications are on')); renderNotifCard(); }
+    catch (e) { toast(e.message, true); renderNotifCard(); }
+  };
+}
+
+function openLeave() {
+  const tomorrow = new Date(Date.parse(me.today + 'T00:00:00Z') + 86400e3).toISOString().slice(0, 10);
+  let type = 'annual';
+  const paintTypes = () => {
+    $('#lv-type').innerHTML = LEAVE_TYPES.map((k) => `<button type="button" role="radio" aria-checked="${k === type}" data-type="${k}">${leaveLabel(k)}</button>`).join('');
+  };
+  paintTypes();
+  $('#lv-type').onclick = (ev) => { const b = ev.target.closest('[data-type]'); if (b) { type = b.dataset.type; paintTypes(); } };
+  $('#lv-start').value = tomorrow; $('#lv-end').value = tomorrow; $('#lv-start').min = me.today;
+  $('#lv-half').checked = false; $('#lv-note').value = ''; $('#lv-err').textContent = '';
+  const syncHalf = () => {
+    if ($('#lv-end').value < $('#lv-start').value) $('#lv-end').value = $('#lv-start').value;
+    $('#lv-end').min = $('#lv-start').value;
+    $('#lv-half-wrap').classList.toggle('hidden', $('#lv-start').value !== $('#lv-end').value);
+  };
+  $('#lv-start').onchange = syncHalf; $('#lv-end').onchange = syncHalf; syncHalf();
+  $('#form-leave').onsubmit = async (ev) => {
+    if (ev.submitter?.value !== 'save') return;
+    ev.preventDefault();
+    try {
+      await api('/api/leave', { method: 'POST', body: { type, start: $('#lv-start').value, end: $('#lv-end').value, half: $('#lv-half').checked, note: $('#lv-note').value } });
+      $('#dlg-leave').close();
+      toast(t('Request sent to your manager'));
+      await loadMe();
+    } catch (e) { $('#lv-err').textContent = e.message; }
+  };
+  $('#dlg-leave').showModal();
 }
 
 function paintLive() {
@@ -249,7 +334,7 @@ function rerender() {
   if (me) renderPunch();
   paintClock();
 }
-addEventListener('langchange', rerender);
+addEventListener('langchange', () => { rerender(); if (me) syncPush('emp'); });
 
 // ---------- boot ----------
 translatePage();
@@ -257,6 +342,7 @@ $('#lang-slot').replaceWith(langButton());
 buildPad();
 setupInstall();
 $('#punch').onclick = punch;
+$('#leave-new').onclick = () => me && openLeave();
 paintClock();
 clearInterval(tick);
 tick = setInterval(paintClock, 1000);

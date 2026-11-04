@@ -11,6 +11,10 @@ export const icons = {
   sheet: I('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 4v17"/>'),
   users: I('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/>'),
   gear: I('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+  plane: I('<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>'),
+  bell: I('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
+  check: I('<path d="M20 6 9 17l-5-5"/>'),
+  x: I('<path d="M18 6 6 18M6 6l12 12"/>'),
   plus: I('<path d="M12 5v14M5 12h14"/>'),
   download: I('<path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),
   edit: I('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
@@ -84,3 +88,54 @@ export function toast(msg, isError = false) {
 export function registerSW() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// ---------- push notifications ----------
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const keyBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+
+// 'install' (iPhone: add to Home Screen first) | 'unsupported' | 'denied' | 'off' | 'on'
+export async function pushStatus() {
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  if (!supported) return isIOS() && !standalone() ? 'install' : 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  if (Notification.permission !== 'granted') return 'off';
+  const reg = await navigator.serviceWorker.ready;
+  return (await reg.pushManager.getSubscription()) ? 'on' : 'off';
+}
+const subscribeUrl = (role) => `/api/push/subscribe${role === 'admin' ? '?role=admin' : ''}`;
+// Must be called straight from a tap (browsers only show the permission prompt then).
+export async function enablePush(role) {
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error(t('Notifications are blocked. Allow them in your phone settings.'));
+  const reg = await navigator.serviceWorker.ready;
+  const { publicKey } = await api('/api/push/key');
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    try { sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }); }
+    catch { const old = await reg.pushManager.getSubscription(); await old?.unsubscribe(); sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }); }
+  }
+  await api(subscribeUrl(role), { method: 'POST', body: { subscription: sub.toJSON(), lang: isZh() ? 'zh' : 'en' } });
+  await api(`/api/push/test${role === 'admin' ? '?role=admin' : ''}`, { method: 'POST', body: {} });
+}
+// Keeps the server copy current (e.g. after a language change). Silent if notifications are off.
+export async function syncPush(role) {
+  try {
+    if ((await pushStatus()) !== 'on') return;
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    await api(subscribeUrl(role), { method: 'POST', body: { subscription: sub.toJSON(), lang: isZh() ? 'zh' : 'en' } });
+  } catch {}
+}
+export async function disablePush(role) {
+  const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+  if (sub) await api(`/api/push/unsubscribe${role === 'admin' ? '?role=admin' : ''}`, { method: 'POST', body: { endpoint: sub.endpoint } });
+}
+
+export const LEAVE_TYPES = ['annual', 'personal', 'sick', 'other'];
+export const leaveLabel = (type) => t({ annual: 'Annual leave', personal: 'Personal leave', sick: 'Sick leave', other: 'Day off' }[type] || type);
+export function leaveRange(r) {
+  const o = { month: 'short', day: 'numeric' };
+  const days = r.half_day ? t('half day') : r.days === 1 ? t('1 day') : t('{n} days', { n: r.days });
+  return `${r.start_date === r.end_date ? dateLabel(r.start_date, { weekday: 'short', ...o }) : `${dateLabel(r.start_date, o)} – ${dateLabel(r.end_date, o)}`} · ${days}`;
+}
+export const statusPill = (st) => `<span class="pill st-${st}"><span class="dot"></span>${t({ pending: 'Waiting for approval', approved: 'Approved', rejected: 'Declined', cancelled: 'Cancelled' }[st])}</span>`;

@@ -1,14 +1,15 @@
-import { api, icons, esc, avatar, time, hm24, dur, hours, money, dayKey, dateLabel, worked, toast, setTimezone, clockNow } from './common.js';
+import { api, icons, esc, avatar, time, hm24, dur, hours, money, dayKey, dateLabel, worked, toast, setTimezone, clockNow, registerSW, pushStatus, enablePush, syncPush, leaveLabel, leaveRange, statusPill } from './common.js';
 import { t, translatePage, langButton, isZh } from './i18n.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const PAGES = [
   { id: 'overview', label: 'Overview', icon: 'home' },
   { id: 'timesheets', label: 'Timesheets', icon: 'sheet' },
+  { id: 'timeoff', label: 'Time off', icon: 'plane' },
   { id: 'team', label: 'Team', icon: 'users' },
   { id: 'settings', label: 'Settings', icon: 'gear' },
 ];
-let state = { page: 'overview', data: null, month: null, empFilter: '', shifts: [] };
+let state = { page: 'overview', data: null, month: null, empFilter: '', shifts: [], leave: [] };
 let liveTimer;
 
 // ---------- auth ----------
@@ -44,7 +45,8 @@ $('#logout-m').innerHTML = icons.logout;
 document.querySelectorAll('[data-icon]').forEach((b) => b.insertAdjacentHTML('afterbegin', icons[b.dataset.icon]));
 
 function buildNav() {
-  const html = PAGES.map((p) => `<button data-page="${p.id}" class="${p.id === state.page ? 'active' : ''}">${icons[p.icon]}<span>${t(p.label)}</span></button>`).join('');
+  const pending = state.data?.pendingLeave || 0;
+  const html = PAGES.map((p) => `<button data-page="${p.id}" class="${p.id === state.page ? 'active' : ''}">${icons[p.icon]}<span>${t(p.label)}</span>${p.id === 'timeoff' && pending ? `<span class="badge" aria-label="${t('{n} waiting', { n: pending })}">${pending}</span>` : ''}</button>`).join('');
   $('#nav').innerHTML = html;
   $('#mnav').innerHTML = html;
   [$('#nav'), $('#mnav')].forEach((n) => (n.onclick = (ev) => { const b = ev.target.closest('button'); if (b) go(b.dataset.page); }));
@@ -61,6 +63,7 @@ async function refresh() {
   try {
     state.data = await api('/api/admin/overview');
     if (state.page === 'timesheets') await loadShifts();
+    if (state.page === 'timeoff') state.leave = (await api('/api/admin/leave')).requests;
   } catch (e) { if (e.status === 401) return boot(); toast(e.message, true); }
   render();
 }
@@ -70,7 +73,10 @@ const isForgotten = (s, d = state.data) => !s.clock_out && (d.now - s.clock_in >
 function render() {
   const d = state.data;
   const forgotten = d.onShift.filter((s) => isForgotten(s));
-  $('#banner').innerHTML = forgotten.map((s) => `
+  buildNav();
+  const leaveBanner = d.pendingLeave && state.page !== 'timeoff'
+    ? `<div class="banner banner-leave">${icons.plane}<span>${t(d.pendingLeave === 1 ? '1 time-off request is waiting for you.' : '{n} time-off requests are waiting for you.', { n: d.pendingLeave })}</span><button class="btn btn-sm btn-primary" data-goto="timeoff">${t('Review')}</button></div>` : '';
+  $('#banner').innerHTML = leaveBanner + forgotten.map((s) => `
     <div class="banner banner-warn" role="alert">${icons.alert}
       <span>${t('<b>{name}</b> has been clocked in for {dur} (since {since}). Forgot to clock out?', {
         name: esc(s.name), dur: `<b class="tnum" data-since="${s.clock_in}">${dur(d.now - s.clock_in)}</b>`,
@@ -80,7 +86,7 @@ function render() {
     ? `<div class="banner">${icons.alert}<span>${t("You're using the default admin password. Please change it.")}</span><button class="btn btn-sm btn-ghost" data-goto="settings">${t('Change now')}</button></div>` : '');
   $('#banner').querySelectorAll('[data-fix]').forEach((b) => (b.onclick = () => openShift(d.onShift.find((s) => s.id === Number(b.dataset.fix)), { forgot: true })));
   $('#side-live').innerHTML = `${t('<b>{n}</b> of {total} on shift now', { n: d.onShift.length, total: d.employees.filter((e) => e.active).length })}<br>${dateLabel(d.today, { weekday: 'long', month: 'long', day: 'numeric' })}`;
-  ({ overview: renderOverview, timesheets: renderTimesheets, team: renderTeam, settings: renderSettings })[state.page]();
+  ({ overview: renderOverview, timesheets: renderTimesheets, timeoff: renderTimeoff, team: renderTeam, settings: renderSettings })[state.page]();
   clearInterval(liveTimer);
   liveTimer = setInterval(tickLive, 1000);
 }
@@ -119,7 +125,8 @@ function renderOverview() {
         <div class="panel-head"><h2>${t('Team today')}</h2><span class="muted">${t('{n} working', { n: d.onShift.length })}</span></div>
         <div class="who">${active.length ? active.sort((a, b) => b.onShift - a.onShift || b.todayMs - a.todayMs).map((e) => {
           const open = d.onShift.find((s) => s.employee_id === e.id);
-          return `<div class="who-row">${avatar(e, open ? 'on' : '')}<div><div class="nm">${esc(e.name)}</div><div class="s">${open && isForgotten(open) ? `<span style="color:var(--clay);font-weight:600">${t('No clock-out since {since}', { since: (dayKey(open.clock_in) === d.today ? '' : dateLabel(dayKey(open.clock_in)) + ' ') + time(open.clock_in) })}</span>` : open ? t('In since {t}', { t: time(open.clock_in) }) : e.todayMs ? t('Worked {dur} today', { dur: dur(e.todayMs) }) : t('Not in today')}</div></div>
+          const away = (d.leaveSoon || []).find((r) => r.employee_id === e.id && r.start_date <= d.today && r.end_date >= d.today);
+          return `<div class="who-row">${avatar(e, open ? 'on' : '')}<div><div class="nm">${esc(e.name)}</div><div class="s">${open && isForgotten(open) ? `<span style="color:var(--clay);font-weight:600">${t('No clock-out since {since}', { since: (dayKey(open.clock_in) === d.today ? '' : dateLabel(dayKey(open.clock_in)) + ' ') + time(open.clock_in) })}</span>` : open ? t('In since {t}', { t: time(open.clock_in) }) : e.todayMs ? t('Worked {dur} today', { dur: dur(e.todayMs) }) : away ? `${icons.plane.replace('<svg', '<svg width="13" height="13" style="vertical-align:-2px"')} ${t('On leave today')} · ${leaveLabel(away.type)}` : t('Not in today')}</div></div>
             <div class="live">${open ? `<span data-since="${open.clock_in}" data-sec="1">${dur(d.now - open.clock_in, { seconds: true })}</span>` : `<span class="muted">${e.todayMs ? hours(e.todayMs) + ' ' + t('h') : '—'}</span>`}</div></div>`;
         }).join('') : `<div class="empty">${t('Add your team to get started.')}<br><br><button class="btn btn-primary btn-sm" data-goto="team">${icons.plus} ${t('Add team member')}</button></div>`}</div>
       </div>
@@ -292,6 +299,76 @@ function openShift(s, { forgot = false } = {}) {
   if (forgot) $('#sh-out').focus();
 }
 
+// ---------- time off ----------
+function renderTimeoff() {
+  const d = state.data, all = state.leave, today = d.today;
+  const pending = all.filter((r) => r.status === 'pending').sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const upcoming = all.filter((r) => r.status === 'approved' && r.end_date >= today).sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const history = all.filter((r) => !pending.includes(r) && !upcoming.includes(r));
+  const ago = (ms) => dateLabel(dayKey(ms)) + ' ' + time(ms);
+  $('#page').innerHTML = `
+    <div class="page-head"><div><h1>${t('Time off')}</h1><p>${t('Requests from your team. Approve or decline — they get notified right away.')}</p></div></div>
+    <div class="card notif-card" id="admin-notif" style="margin:0 0 18px"></div>
+    <div class="section-title">${t('Waiting for you')} (${pending.length})</div>
+    <div class="req-cards">${pending.length ? pending.map((r) => `
+      <div class="card req">
+        <div class="req-top">${avatar(r)}<div><div class="nm">${esc(r.name)}</div><div class="s">${t('Asked {when}', { when: ago(r.created_at) })}</div></div>
+          <span class="pill st-pending" style="margin-left:auto"><span class="dot"></span>${leaveLabel(r.type)}</span></div>
+        <div class="when">${leaveRange(r)}</div>
+        ${r.note ? `<div class="why">“${esc(r.note)}”</div>` : ''}
+        <input class="input" data-reply="${r.id}" maxlength="300" placeholder="${t('Reply (optional)')}">
+        <div class="acts">
+          <button class="btn btn-danger" data-decide="rejected" data-id="${r.id}">${icons.x} ${t('Decline')}</button>
+          <button class="btn btn-approve" data-decide="approved" data-id="${r.id}">${icons.check} ${t('Approve')}</button>
+        </div>
+      </div>`).join('') : `<div class="card empty" style="grid-column:1/-1">${t('No requests waiting. 🎉')}</div>`}</div>
+    <div class="section-title" style="margin-top:28px">${t('Coming up')}</div>
+    ${leaveTable(upcoming, t('No approved time off coming up.'))}
+    <div class="section-title" style="margin-top:28px">${t('History')}</div>
+    ${leaveTable(history, t('Nothing yet.'))}`;
+  $('#page').querySelectorAll('[data-decide]').forEach((b) => (b.onclick = async () => {
+    const id = b.dataset.id, status = b.dataset.decide;
+    const note = $(`[data-reply="${id}"]`).value;
+    b.disabled = true;
+    try {
+      await api(`/api/admin/leave/${id}`, { method: 'POST', body: { status, manager_note: note } });
+      toast(status === 'approved' ? t('Approved — {name} will be notified', { name: all.find((r) => String(r.id) === id).name }) : t('Declined — {name} will be notified', { name: all.find((r) => String(r.id) === id).name }));
+      refresh();
+    } catch (e) { toast(e.message, true); b.disabled = false; }
+  }));
+  renderAdminNotif();
+}
+function leaveTable(rows, empty) {
+  if (!rows.length) return `<div class="card empty">${empty}</div>`;
+  return `<div class="card panel" style="padding:6px"><div class="table-wrap"><table class="tbl">
+    <thead><tr><th>${t('Employee')}</th><th>${t('Type')}</th><th>${t('Dates')}</th><th>${t('Status')}</th><th>${t('Note')}</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr><td><span class="emp">${avatar(r)}${esc(r.name)}</span></td><td>${leaveLabel(r.type)}</td><td>${leaveRange(r)}</td><td>${statusPill(r.status)}</td>
+      <td class="muted" style="white-space:normal;min-width:160px">${esc(r.note)}${r.manager_note ? `<br><b>${t('Reply')}:</b> ${esc(r.manager_note)}` : ''}</td></tr>`).join('')}</tbody>
+  </table></div></div>`;
+}
+async function renderAdminNotif() {
+  const card = $('#admin-notif');
+  if (!card) return;
+  const st = await pushStatus().catch(() => 'unsupported');
+  card.innerHTML = st === 'on'
+    ? `${icons.bell}<span>${t('Notifications are on for this device.')}</span><button class="btn btn-ghost btn-sm" id="notif-test">${t('Send a test')}</button>`
+    : st === 'install'
+    ? `${icons.bell}<span>${t('On iPhone: tap Share → Add to Home Screen, open the dashboard from there, then turn on notifications.')}</span>`
+    : st === 'denied'
+    ? `${icons.bell}<span>${t('Notifications are blocked. Allow them in your phone settings.')}</span>`
+    : st === 'unsupported'
+    ? `${icons.bell}<span>${t('This browser cannot show notifications. Check this page for new requests.')}</span>`
+    : `${icons.bell}<span>${t('Get a notification on this device when someone asks for time off.')}</span><button class="btn btn-primary btn-sm" id="notif-on">${t('Turn on')}</button>`;
+  const on = $('#notif-on');
+  if (on) on.onclick = async () => {
+    try { await enablePush('admin'); toast(t('Notifications are on')); }
+    catch (e) { toast(e.message, true); }
+    renderAdminNotif();
+  };
+  const test = $('#notif-test');
+  if (test) test.onclick = () => api('/api/push/test?role=admin', { method: 'POST', body: {} }).then(() => toast(t('Test sent')), (e) => toast(e.message, true));
+}
+
 // ---------- team ----------
 function renderTeam() {
   const d = state.data;
@@ -375,11 +452,13 @@ translatePage();
 document.querySelectorAll('.lang-slot').forEach((el) => el.replaceWith(langButton()));
 addEventListener('langchange', () => {
   if (!state.data || $('#admin').classList.contains('hidden')) return;
+  syncPush('admin');
   buildNav();
   render();
 });
 
 addEventListener('hashchange', () => { const p = location.hash.slice(1); if (p && p !== state.page) go(p); });
 let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { const c = document.getElementById('chart'); if (c && state.page === 'overview') drawChart(c, state.data); }, 150); });
-setInterval(() => { if (!document.hidden && !$('#admin').classList.contains('hidden') && !document.querySelector('dialog[open]') && state.page === 'overview') refresh(); }, 60000);
+setInterval(() => { if (!document.hidden && !$('#admin').classList.contains('hidden') && !document.querySelector('dialog[open]') && ['overview', 'timeoff'].includes(state.page)) refresh(); else if (!document.hidden && state.data) api('/api/admin/overview').then((d) => { if (d.pendingLeave !== state.data.pendingLeave) { state.data = d; render(); } }).catch(() => {}); }, 60000);
+registerSW();
 boot();

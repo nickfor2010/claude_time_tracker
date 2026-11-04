@@ -11,9 +11,10 @@ const d1 = (DB) => ({
 
 let app;
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     app ||= createApp({ db: d1(env.DB), timezone: env.APP_TIMEZONE || 'Asia/Taipei', adminPassword: env.ADMIN_PASSWORD });
-    const res = await app.handle(request, { ip: request.headers.get('cf-connecting-ip') || 'unknown' });
+    // Notifications are sent after the response, so approving or requesting feels instant.
+    const res = await app.handle(request, { ip: request.headers.get('cf-connecting-ip') || 'unknown', defer: (p) => ctx.waitUntil(p) });
     return res || env.ASSETS.fetch(request);
   },
 };

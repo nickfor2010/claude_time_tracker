@@ -53,6 +53,7 @@
     <!-- 3. Punch -->
     <section id="view-punch" class="hidden">
       <div class="hero-clock"><div class="time tnum" data-clock></div><div class="date" data-date></div></div>
+      <div id="leave-notice"></div>
       <div class="status-line" id="status"></div>
       <div class="punch-zone">
         <button class="punch" id="punch" aria-live="polite">
@@ -72,12 +73,35 @@
       <div class="card week"><div class="week-bars" id="week"></div></div>
       <div class="section-title" data-i18n>Today</div>
       <div class="card timeline" id="today"></div>
+      <div class="section-title section-row" id="timeoff"><span data-i18n>Time off</span><button class="btn btn-primary btn-sm" id="leave-new"></button></div>
+      <div class="card timeline" id="leave-list"></div>
+      <div class="card notif-card hidden" id="notif-card"></div>
       <div class="section-title" data-i18n>Recent shifts</div>
       <div class="card timeline" id="recent"></div>
     </section>
 
     <footer class="foot">Parsley 帕斯里 · <span data-i18n>Italian passion</span> · <a href="/admin" data-i18n>Manager</a></footer>
   </main>
+  <!-- Time-off request -->
+  <dialog id="dlg-leave">
+    <form method="dialog" id="form-leave">
+      <h3 data-i18n>Request time off</h3>
+      <div class="field"><label for="lv-type" data-i18n>Type</label>
+        <div class="seg" id="lv-type" role="radiogroup"></div></div>
+      <div class="row-2">
+        <div class="field"><label for="lv-start" data-i18n>From</label><input class="input" type="date" id="lv-start" required></div>
+        <div class="field"><label for="lv-end" data-i18n>To</label><input class="input" type="date" id="lv-end" required></div>
+      </div>
+      <label class="check hidden" id="lv-half-wrap"><input type="checkbox" id="lv-half"> <span data-i18n>Half day only</span></label>
+      <div class="field"><label for="lv-note" data-i18n>Reason (optional)</label><textarea class="input" id="lv-note" rows="2" maxlength="300"></textarea></div>
+      <div class="err" id="lv-err"></div>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" value="cancel" formnovalidate data-i18n>Cancel</button>
+        <button class="btn btn-primary" value="save" data-i18n>Send request</button>
+      </div>
+    </form>
+  </dialog>
   <script type="module" src="/js/employee.js"></script>
 </body>
 </html>
