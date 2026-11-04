@@ -18,30 +18,32 @@
   <!-- Login -->
   <div class="login-screen hidden" id="login">
     <form class="card login-card" id="login-form">
-      <div class="brand"><img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · Manager dashboard</span></span></div>
-      <h1>Welcome back</h1>
-      <div class="field"><label for="pw">Admin password</label><input class="input" id="pw" type="password" autocomplete="current-password" required autofocus></div>
+      <span class="lang-slot"></span>
+      <div class="brand"><img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · <span data-i18n>Manager dashboard</span></span></span></div>
+      <h1 data-i18n>Welcome back</h1>
+      <div class="field"><label for="pw" data-i18n>Admin password</label><input class="input" id="pw" type="password" autocomplete="current-password" required autofocus></div>
       <div class="err" id="login-err"></div>
-      <button class="btn btn-primary" type="submit">Sign in</button>
-      <a href="/" class="muted" style="font-size:13px;text-align:center">← Back to the time clock</a>
+      <button class="btn btn-primary" type="submit" data-i18n>Sign in</button>
+      <a href="/" class="muted" style="font-size:13px;text-align:center" data-i18n>← Back to the time clock</a>
     </form>
   </div>
 
   <!-- App -->
   <div class="admin hidden" id="admin">
     <aside class="side">
-      <a class="brand" href="/admin"><img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · Team time</span></span></a>
+      <a class="brand" href="/admin"><img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · <span data-i18n>Team time</span></span></span></a>
       <nav class="nav" id="nav"></nav>
       <div class="side-foot">
+        <span class="lang-slot"></span>
         <div class="side-card" id="side-live"></div>
-        <a class="btn" href="/" target="_blank" rel="noopener" data-icon="clock">Open time clock</a>
-        <button class="btn" id="logout" data-icon="logout">Sign out</button>
+        <a class="btn" href="/" target="_blank" rel="noopener" data-icon="clock"><span data-i18n>Open time clock</span></a>
+        <button class="btn" id="logout" data-icon="logout"><span data-i18n>Sign out</span></button>
       </div>
     </aside>
     <main class="main">
       <div class="mobile-top">
-        <a class="brand" href="/admin"><img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · Team time</span></span></a>
-        <button class="btn btn-ghost btn-icon" id="logout-m" aria-label="Sign out"></button>
+        <a class="brand" href="/admin"><img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · <span data-i18n>Team time</span></span></span></a>
+        <div class="top-actions"><span class="lang-slot"></span><button class="btn btn-ghost btn-icon" id="logout-m" data-i18n-aria-label="Sign out" aria-label="Sign out"></button></div>
       </div>
       <div id="banner"></div>
       <div id="page"></div>
@@ -54,20 +56,20 @@
     <form method="dialog" id="form-shift">
       <h3 id="shift-title">Add shift</h3>
       <p class="muted" id="sh-hint" style="margin:-6px 0 0;font-size:13.5px"></p>
-      <div class="field"><label for="sh-emp">Employee</label><select class="input" id="sh-emp" required></select></div>
-      <div class="field"><label for="sh-date">Date</label><input class="input" type="date" id="sh-date" required></div>
+      <div class="field"><label for="sh-emp" data-i18n>Employee</label><select class="input" id="sh-emp" required></select></div>
+      <div class="field"><label for="sh-date" data-i18n>Date</label><input class="input" type="date" id="sh-date" required></div>
       <div class="row-3">
-        <div class="field"><label for="sh-in">Clock in</label><input class="input" type="time" id="sh-in" required></div>
-        <div class="field"><label for="sh-out">Clock out</label><input class="input" type="time" id="sh-out"></div>
-        <div class="field"><label for="sh-break">Break (min)</label><input class="input" type="number" min="0" step="5" id="sh-break" value="0"></div>
+        <div class="field"><label for="sh-in" data-i18n>Clock in</label><input class="input" type="time" id="sh-in" required></div>
+        <div class="field"><label for="sh-out" data-i18n>Clock out</label><input class="input" type="time" id="sh-out"></div>
+        <div class="field"><label for="sh-break" data-i18n>Break (min)</label><input class="input" type="number" min="0" step="5" id="sh-break" value="0"></div>
       </div>
-      <div class="field"><label for="sh-note">Note</label><input class="input" id="sh-note" placeholder="e.g. forgot to clock out"></div>
+      <div class="field"><label for="sh-note" data-i18n>Note</label><input class="input" id="sh-note" placeholder="e.g. forgot to clock out" data-i18n-placeholder="e.g. forgot to clock out"></div>
       <div class="err" id="sh-err"></div>
       <div class="dlg-actions">
-        <button class="btn btn-danger hidden" type="button" id="sh-del">Delete</button>
+        <button class="btn btn-danger hidden" type="button" id="sh-del" data-i18n>Delete</button>
         <span class="spacer"></span>
-        <button class="btn btn-ghost" value="cancel" formnovalidate>Cancel</button>
-        <button class="btn btn-primary" id="sh-save" value="save">Save</button>
+        <button class="btn btn-ghost" value="cancel" formnovalidate data-i18n>Cancel</button>
+        <button class="btn btn-primary" id="sh-save" value="save" data-i18n>Save</button>
       </div>
     </form>
   </dialog>
@@ -76,18 +78,18 @@
   <dialog id="dlg-emp">
     <form method="dialog" id="form-emp">
       <h3 id="emp-title">Add team member</h3>
-      <div class="field"><label for="em-name">Name</label><input class="input" id="em-name" required maxlength="40"></div>
+      <div class="field"><label for="em-name" data-i18n>Name</label><input class="input" id="em-name" required maxlength="40"></div>
       <div class="row-2">
-        <div class="field"><label for="em-role">Role</label><input class="input" id="em-role" placeholder="Pastry chef" maxlength="40"></div>
-        <div class="field"><label for="em-rate">Hourly rate (NT$)</label><input class="input" type="number" min="0" step="1" id="em-rate" value="196"></div>
+        <div class="field"><label for="em-role" data-i18n>Role</label><input class="input" id="em-role" placeholder="Pastry chef" data-i18n-placeholder="Pastry chef" maxlength="40"></div>
+        <div class="field"><label for="em-rate" data-i18n>Hourly rate (NT$)</label><input class="input" type="number" min="0" step="1" id="em-rate" value="196"></div>
       </div>
       <div class="field"><label for="em-pin" id="em-pin-label">PIN (4–6 digits)</label><input class="input" id="em-pin" inputmode="numeric" pattern="\d{4,6}" maxlength="6" autocomplete="off"></div>
-      <label class="check hidden" id="em-active-wrap"><input type="checkbox" id="em-active"> Active (can clock in)</label>
+      <label class="check hidden" id="em-active-wrap"><input type="checkbox" id="em-active"> <span data-i18n>Active (can clock in)</span></label>
       <div class="err" id="em-err"></div>
       <div class="dlg-actions">
         <span class="spacer"></span>
-        <button class="btn btn-ghost" value="cancel" formnovalidate>Cancel</button>
-        <button class="btn btn-primary" value="save">Save</button>
+        <button class="btn btn-ghost" value="cancel" formnovalidate data-i18n>Cancel</button>
+        <button class="btn btn-primary" value="save" data-i18n>Save</button>
       </div>
     </form>
   </dialog>

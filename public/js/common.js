@@ -1,3 +1,4 @@
+import { t, locale, isZh } from './i18n.js';
 // Shared helpers for the employee app and the admin dashboard.
 export let TZ = 'Asia/Taipei';
 
@@ -31,7 +32,7 @@ export async function api(path, opts = {}) {
     credentials: 'same-origin',
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = new Error(data.error || `Error ${res.status}`); e.status = res.status; throw e; }
+  if (!res.ok) { const e = new Error(t(data.error || `Error ${res.status}`)); e.status = res.status; throw e; }
   return data;
 }
 
@@ -40,26 +41,30 @@ export const initials = (name) => (name || '?').trim().split(/\s+/).map((w) => [
 export const avatar = (e, cls = '') => `<span class="avatar ${cls}" style="--c:${esc(e.color)}">${esc(initials(e.name))}</span>`;
 
 let fmtTime, fmtDay, fmtKey, fmtHM;
+// Rebuilds formatters; call again after the timezone or the language changes.
 export function setTimezone(tz) {
   if (tz) TZ = tz;
-  fmtTime = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
-  fmtDay = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' });
+  fmtTime = new Intl.DateTimeFormat(locale(), { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+  fmtDay = new Intl.DateTimeFormat(locale(), { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' });
   fmtKey = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
   fmtHM = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 setTimezone();
+addEventListener('langchange', () => setTimezone());
 export const time = (ms) => fmtTime.format(ms);
 export const hm24 = (ms) => fmtHM.format(ms);
 export const dayLabel = (ms) => fmtDay.format(ms);
 export const dayKey = (ms) => fmtKey.format(ms);
 export const dateLabel = (key, opts = { weekday: 'short', month: 'short', day: 'numeric' }) =>
-  new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...opts }).format(new Date(key + 'T00:00:00Z'));
+  new Intl.DateTimeFormat(locale(), { timeZone: 'UTC', ...opts }).format(new Date(key + 'T00:00:00Z'));
+// Formats a clock time in the business timezone with the current language (e.g. "9:00 PM" / "下午9:00").
+export const clockNow = (opts) => new Intl.DateTimeFormat(locale(), { timeZone: TZ, ...opts }).format(new Date());
 
 export function dur(ms, { seconds = false } = {}) {
-  const t = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const x = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), s = x % 60;
   if (seconds) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${h}h ${String(m).padStart(2, '0')}m`;
+  return isZh() ? `${h}小時${String(m).padStart(2, '0')}分` : `${h}h ${String(m).padStart(2, '0')}m`;
 }
 export const hours = (ms, d = 1) => (ms / 3600e3).toFixed(d);
 export const money = (n) => 'NT$ ' + Math.round(n).toLocaleString('en-US');

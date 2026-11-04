@@ -23,21 +23,21 @@
   <main class="app" id="app">
     <header class="app-top">
       <a class="brand" href="/" aria-label="Parsley 帕斯里 time clock">
-        <img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · Time clock</span></span>
+        <img class="mark" src="/icons/icon-192.png" alt=""><span><span class="brand-name">Parsley</span><span class="brand-sub">帕斯里 · <span data-i18n>Time clock</span></span></span>
       </a>
-      <div id="top-right"></div>
+      <div class="top-actions"><span id="lang-slot"></span><div id="top-right"></div></div>
     </header>
 
     <!-- 1. Choose your name -->
     <section id="view-team" class="hidden">
       <div class="hero-clock"><div class="time tnum" data-clock></div><div class="date" data-date></div></div>
-      <h1 class="login-title">Who's clocking in?</h1>
-      <p class="muted" style="margin:0">Tap your name, then enter your PIN.</p>
+      <h1 class="login-title" data-i18n>Who's clocking in?</h1>
+      <p class="muted" style="margin:0" data-i18n>Tap your name, then enter your PIN.</p>
       <div class="team-grid" id="team-grid"></div>
       <div class="card install-hint hidden" id="install-hint">
         <img src="/icons/icon-192.png" alt="">
-        <div><b>Add to Home Screen</b><br><span class="muted" id="install-text">Install Parsley Time for one-tap punching.</span></div>
-        <button class="btn btn-primary btn-sm hidden" id="install-btn" style="margin-left:auto">Install</button>
+        <div><b data-i18n>Add to Home Screen</b><br><span class="muted" id="install-text" data-i18n>Install Parsley Time for one-tap punching.</span></div>
+        <button class="btn btn-primary btn-sm hidden" id="install-btn" style="margin-left:auto" data-i18n>Install</button>
       </div>
     </section>
 
@@ -45,7 +45,7 @@
     <section id="view-pin" class="pin-wrap hidden">
       <button class="btn btn-ghost btn-sm" id="pin-back" style="align-self:flex-start"></button>
       <div class="pin-who" id="pin-who"></div>
-      <div class="muted">Enter your PIN</div>
+      <div class="muted" data-i18n>Enter your PIN</div>
       <div class="pin-dots" id="pin-dots" aria-live="polite"></div>
       <div class="pinpad" id="pinpad"></div>
     </section>
@@ -64,19 +64,19 @@
         </button>
       </div>
       <div class="stats">
-        <div class="card stat"><div class="k">Today</div><div class="v" id="st-today">–</div></div>
-        <div class="card stat"><div class="k">This week</div><div class="v" id="st-week">–</div></div>
-        <div class="card stat"><div class="k">This month</div><div class="v" id="st-month">–</div></div>
+        <div class="card stat"><div class="k" data-i18n>Today</div><div class="v" id="st-today">–</div></div>
+        <div class="card stat"><div class="k" data-i18n>This week</div><div class="v" id="st-week">–</div></div>
+        <div class="card stat"><div class="k" data-i18n>This month</div><div class="v" id="st-month">–</div></div>
       </div>
-      <div class="section-title">This week</div>
+      <div class="section-title" data-i18n>This week</div>
       <div class="card week"><div class="week-bars" id="week"></div></div>
-      <div class="section-title">Today</div>
+      <div class="section-title" data-i18n>Today</div>
       <div class="card timeline" id="today"></div>
-      <div class="section-title">Recent shifts</div>
+      <div class="section-title" data-i18n>Recent shifts</div>
       <div class="card timeline" id="recent"></div>
     </section>
 
-    <footer class="foot">Parsley 帕斯里 · Italian passion · <a href="/admin">Manager</a></footer>
+    <footer class="foot">Parsley 帕斯里 · <span data-i18n>Italian passion</span> · <a href="/admin" data-i18n>Manager</a></footer>
   </main>
   <script type="module" src="/js/employee.js"></script>
 </body>

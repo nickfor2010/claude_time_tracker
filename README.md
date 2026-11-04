@@ -14,6 +14,10 @@ A time clock for the Parsley team. Staff install it on their phones and tap a bu
   - optional location stamp on each punch
 - **Runs on Cloudflare (free)** using Workers and a D1 database. It also runs on any server with Node.js 22.13 or newer, which uses Node's built-in SQLite.
 
+## Languages (English / 繁體中文)
+
+Every screen comes in English and Traditional Chinese (Taiwan). A phone set to Chinese opens in Chinese automatically, and the **中文 / EN** button switches language at any time. Each phone or computer remembers its own choice. The CSV export follows the dashboard language. All texts live in `public/js/i18n.js`.
+
 ## Fixing mistakes
 
 In **Timesheets**, tap ✏️ on any shift to change the clock-in or clock-out time, add break minutes or a note, or delete it. **+ Add shift** records a shift someone forgot to punch. Edited shifts are marked *edited*, and the employee sees "adjusted by manager".

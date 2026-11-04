@@ -73,6 +73,9 @@ test('full punch flow', async () => {
   const csv = (await admin(`/api/admin/export.csv?from=${today}&to=${today}`)).data;
   assert.match(csv, /Employee,Date,Clock in,Clock out/);
   assert.match(csv, /TOTAL Vera/);
+  const csvZh = (await admin(`/api/admin/export.csv?from=${today}&to=${today}&lang=zh`)).data;
+  assert.match(csvZh, /員工,日期,上班打卡,下班打卡/);
+  assert.match(csvZh, /合計 Vera/);
 
   // Forgotten clock-out warning threshold
   assert.equal((await admin('/api/admin/overview')).data.alertHours, 12);

@@ -1,4 +1,5 @@
-import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, toast, registerSW, setTimezone, TZ } from './common.js';
+import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, toast, registerSW, setTimezone, clockNow } from './common.js';
+import { t, translatePage, langButton } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
 const views = ['team', 'pin', 'punch'];
@@ -13,36 +14,41 @@ let tick;
 
 // ---------- live clock ----------
 function paintClock() {
-  const now = new Date();
-  const t = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(now);
-  const d = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric' }).format(now);
-  document.querySelectorAll('[data-clock]').forEach((el) => (el.textContent = t));
+  const tm = clockNow({ hour: 'numeric', minute: '2-digit' });
+  const d = clockNow({ weekday: 'long', month: 'long', day: 'numeric' });
+  document.querySelectorAll('[data-clock]').forEach((el) => (el.textContent = tm));
   document.querySelectorAll('[data-date]').forEach((el) => (el.textContent = d));
   if (me) paintLive();
 }
 
 // ---------- team & PIN ----------
+let team = [];
 async function showTeam() {
   me = null;
   $('#top-right').innerHTML = '';
-  const { employees, company, timezone } = await api('/api/team');
+  const { employees, timezone } = await api('/api/team');
   setTimezone(timezone);
+  team = employees;
+  renderTeam();
+  show('team');
+  paintClock();
+}
+function renderTeam() {
+  const employees = team;
   $('#team-grid').innerHTML = employees.length
     ? employees.map((e) => `<button class="team-btn" data-id="${e.id}">${avatar(e)}<span class="nm">${esc(e.name)}</span>${e.role ? `<span class="rl">${esc(e.role)}</span>` : ''}</button>`).join('')
-    : `<div class="card empty" style="grid-column:1/-1">No team members yet.<br>Ask your manager to add you in the <a href="/admin">dashboard</a>.</div>`;
+    : `<div class="card empty" style="grid-column:1/-1">${t('No team members yet.<br>Ask your manager to add you in the <a href="/admin">dashboard</a>.')}</div>`;
   $('#team-grid').onclick = (ev) => {
     const b = ev.target.closest('.team-btn');
     if (!b) return;
     selected = employees.find((e) => e.id === Number(b.dataset.id));
     openPin();
   };
-  show('team');
-  paintClock();
 }
 
 function openPin() {
   pin = '';
-  $('#pin-back').innerHTML = `${icons.back} Not you?`;
+  $('#pin-back').innerHTML = `${icons.back} ${t('Not you?')}`;
   $('#pin-who').innerHTML = `${avatar(selected)}<b style="font-size:19px">${esc(selected.name)}</b>`;
   renderDots();
   show('pin');
@@ -51,10 +57,13 @@ function renderDots() {
   const n = Math.max(4, pin.length);
   $('#pin-dots').innerHTML = Array.from({ length: n }, (_, i) => `<span class="${i < pin.length ? 'on' : ''}"></span>`).join('');
 }
-function buildPad() {
+function buildPadKeys() {
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok'];
-  $('#pinpad').innerHTML = keys.map((k) => k === 'del' ? `<button class="plain" data-k="del" aria-label="Delete">⌫</button>`
-    : k === 'ok' ? `<button class="plain" data-k="ok" style="color:var(--primary)">Enter</button>` : `<button data-k="${k}">${k}</button>`).join('');
+  $('#pinpad').innerHTML = keys.map((k) => k === 'del' ? `<button class="plain" data-k="del" aria-label="${t('Delete')}">⌫</button>`
+    : k === 'ok' ? `<button class="plain" data-k="ok" style="color:var(--primary)">${t('Enter')}</button>` : `<button data-k="${k}">${k}</button>`).join('');
+}
+function buildPad() {
+  buildPadKeys();
   $('#pinpad').onclick = (ev) => { const k = ev.target.closest('button')?.dataset.k; if (k) press(k); };
   document.addEventListener('keydown', (ev) => {
     if ($('#view-pin').classList.contains('hidden')) return;
@@ -108,10 +117,10 @@ const isStale = (s) => !s.clock_out && (dayKey(s.clock_in) !== me.today || serve
 
 function renderPunch() {
   const e = me.employee;
-  $('#top-right').innerHTML = `<button class="btn btn-ghost btn-sm" id="signout" title="Sign out">${avatar(e, '')}<span>${esc(e.name.split(' ')[0])}</span></button>`;
+  $('#top-right').innerHTML = `<button class="btn btn-ghost btn-sm" id="signout" title="${t('Sign out')}">${avatar(e, '')}<span>${esc(e.name.split(' ')[0])}</span></button>`;
   $('#top-right .avatar').style.cssText += ';width:26px;height:26px;font-size:10px';
   $('#signout').onclick = async () => {
-    if (!confirm(`Sign out ${e.name} from this phone?`)) return;
+    if (!confirm(t('Sign out {name} from this phone?', { name: e.name }))) return;
     await api('/api/logout', { method: 'POST' });
     showTeam();
   };
@@ -128,17 +137,17 @@ function renderPunch() {
   $('#today').innerHTML = me.todayShifts.length ? me.todayShifts.map((s) => `
     <div class="tl-row">
       <div class="tl-ico">${s.clock_out ? icons.clock : icons.in}</div>
-      <div class="tl-main"><div class="t">${time(s.clock_in)} → ${s.clock_out ? time(s.clock_out) : 'now'}</div>
-        <div class="s">${s.clock_out ? 'Completed' : 'In progress'}${s.break_min ? ` · ${s.break_min} min break` : ''}${s.edited ? ' · adjusted by manager' : ''}</div></div>
+      <div class="tl-main"><div class="t">${time(s.clock_in)} → ${s.clock_out ? time(s.clock_out) : t('now')}</div>
+        <div class="s">${s.clock_out ? t('Completed') : t('In progress')}${s.break_min ? ` · ${t('{n} min break', { n: s.break_min })}` : ''}${s.edited ? ` · ${t('adjusted by manager')}` : ''}</div></div>
       <div class="tl-dur" ${s.clock_out ? '' : 'data-live-shift'}>${dur(worked(s, serverNow()))}</div>
-    </div>`).join('') : `<div class="empty">No punches yet today.</div>`;
+    </div>`).join('') : `<div class="empty">${t('No punches yet today.')}</div>`;
 
   $('#recent').innerHTML = me.recent.length ? me.recent.map((s) => `
     <div class="tl-row">
       <div class="tl-ico">${icons.cal}</div>
       <div class="tl-main"><div class="t">${dateLabel(dayKey(s.clock_in))}</div><div class="s">${time(s.clock_in)} – ${time(s.clock_out)}</div></div>
       <div class="tl-dur">${dur(worked(s))}</div>
-    </div>`).join('') : `<div class="empty">Your past shifts will appear here.</div>`;
+    </div>`).join('') : `<div class="empty">${t('Your past shifts will appear here.')}</div>`;
 
   paintLive();
 }
@@ -165,15 +174,15 @@ function paintLive() {
   btn.classList.toggle('is-in', !!open);
   const core = $('#punch-core');
   const html = open
-    ? `<span class="lbl">On shift</span><span class="big">${dur(openMs, { seconds: true })}</span><span class="sub">Tap to clock out</span>`
-    : `${icons.in}<span class="big">Clock in</span><span class="sub">${me.todayMs ? 'Start another shift' : 'Start your day'}</span>`;
+    ? `<span class="lbl">${t('On shift')}</span><span class="big">${dur(openMs, { seconds: true })}</span><span class="sub">${t('Tap to clock out')}</span>`
+    : `${icons.in}<span class="big">${t('Clock in')}</span><span class="sub">${me.todayMs ? t('Start another shift') : t('Start your day')}</span>`;
   if (core.innerHTML !== html) core.innerHTML = html;
-  btn.setAttribute('aria-label', open ? 'Clock out' : 'Clock in');
+  btn.setAttribute('aria-label', open ? t('Clock out') : t('Clock in'));
   $('#status').innerHTML = open && isStale(open)
-    ? `<span class="pill pill-warn"><span class="dot"></span>Still clocked in since ${dateLabel(dayKey(open.clock_in))}, ${time(open.clock_in)}. Forgot? Tell your manager.</span>`
+    ? `<span class="pill pill-warn"><span class="dot"></span>${t('Still clocked in since {d}, {t}. Forgot? Tell your manager.', { d: dateLabel(dayKey(open.clock_in)), t: time(open.clock_in) })}</span>`
     : open
-    ? `<span class="pill pill-live"><span class="dot"></span>Clocked in at ${time(open.clock_in)}</span>`
-    : `<span class="pill"><span class="dot"></span>Off the clock</span>`;
+    ? `<span class="pill pill-live"><span class="dot"></span>${t('Clocked in at {t}', { t: time(open.clock_in) })}</span>`
+    : `<span class="pill"><span class="dot"></span>${t('Off the clock')}</span>`;
 }
 
 function getLocation() {
@@ -188,19 +197,19 @@ function getLocation() {
 async function punch() {
   const btn = $('#punch');
   if (btn.classList.contains('busy')) return;
-  if (me.open && worked(me.open, serverNow()) < 60e3 && !confirm('You clocked in less than a minute ago. Clock out anyway?')) return;
-  if (me.open && isStale(me.open) && !confirm(`You've been clocked in since ${dateLabel(dayKey(me.open.clock_in))}, ${time(me.open.clock_in)} (${dur(worked(me.open, serverNow()))}).\n\nIf you forgot to clock out, your manager can fix the time. Clock out now anyway?`)) return;
+  if (me.open && worked(me.open, serverNow()) < 60e3 && !confirm(t('You clocked in less than a minute ago. Clock out anyway?'))) return;
+  if (me.open && isStale(me.open) && !confirm(t("You've been clocked in since {d}, {t} ({dur}).\n\nIf you forgot to clock out, your manager can fix the time. Clock out now anyway?", { d: dateLabel(dayKey(me.open.clock_in)), t: time(me.open.clock_in), dur: dur(worked(me.open, serverNow())) }))) return;
   btn.classList.add('busy');
   try {
     const loc = await getLocation();
     const r = await api('/api/punch', { method: 'POST', body: loc });
     me = { ...r, skew: Date.now() - r.now };
     navigator.vibrate?.(r.action === 'in' ? 30 : [30, 60, 30]);
-    toast(r.action === 'in' ? `Clocked in at ${time(r.at)} — buon lavoro!` : `Clocked out at ${time(r.at)} — grazie, see you soon!`);
+    toast(r.action === 'in' ? t('Clocked in at {t} — buon lavoro!', { t: time(r.at) }) : t('Clocked out at {t} — grazie, see you soon!', { t: time(r.at) }));
     renderPunch();
   } catch (e) {
     if (e.status === 401) return showTeam();
-    toast(e.status ? e.message : 'No connection — please try again.', true);
+    toast(e.status ? e.message : t('No connection — please try again.'), true);
   } finally {
     btn.classList.remove('busy');
   }
@@ -213,7 +222,10 @@ function setupInstall() {
   if (standalone) return;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (ios) {
-    $('#install-text').innerHTML = 'Tap <b>Share</b> then <b>Add to Home Screen</b> for one-tap punching.';
+    $('#install-text').removeAttribute('data-i18n');
+    $('#install-text').setAttribute('data-i18n-html', '');
+    $('#install-text').dataset.i18nSrc = 'Tap <b>Share</b> then <b>Add to Home Screen</b> for one-tap punching.';
+    translatePage();
     $('#install-hint').classList.remove('hidden');
   }
   addEventListener('beforeinstallprompt', (e) => {
@@ -229,7 +241,19 @@ function setupInstall() {
   };
 }
 
+// ---------- language ----------
+function rerender() {
+  buildPadKeys();
+  if (!$('#view-team').classList.contains('hidden')) renderTeam();
+  if (!$('#view-pin').classList.contains('hidden')) $('#pin-back').innerHTML = `${icons.back} ${t('Not you?')}`;
+  if (me) renderPunch();
+  paintClock();
+}
+addEventListener('langchange', rerender);
+
 // ---------- boot ----------
+translatePage();
+$('#lang-slot').replaceWith(langButton());
 buildPad();
 setupInstall();
 $('#punch').onclick = punch;

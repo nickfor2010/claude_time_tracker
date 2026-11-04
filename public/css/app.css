@@ -92,6 +92,12 @@ button { cursor: pointer; }
 /* ============ Employee app ============ */
 .app { max-width: 480px; margin: 0 auto; min-height: 100dvh; padding: calc(14px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
 .app-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.lang-btn { min-width: 48px; font-weight: 700; letter-spacing: .02em; }
+.side .lang-btn { background: rgba(255,255,255,.08); color: var(--cream); border-color: transparent; justify-self: start; }
+:lang(zh-Hant-TW) .stat .v { font-size: 16px; white-space: nowrap; }
+.login-card .lang-btn { justify-self: end; margin-bottom: -8px; }
+:lang(zh-Hant-TW) .section-title, :lang(zh-Hant-TW) .brand-sub, :lang(zh-Hant-TW) .punch .core .lbl { letter-spacing: .06em; }
 
 .hero-clock { text-align: center; margin: 6px 0 4px; }
 .hero-clock .time { font-family: var(--font-display); font-size: 44px; font-weight: 500; letter-spacing: -.02em; line-height: 1.05; }

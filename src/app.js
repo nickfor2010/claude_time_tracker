@@ -94,6 +94,7 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) {
   const TZ = timezone;
   const { dayKey, zonedToMs, clock } = makeTime(TZ);
+  const clockZh = new Intl.DateTimeFormat('zh-TW', { timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit' });
   let ready;
 
   const getSetting = async (k) => (await db.get('SELECT value FROM settings WHERE key = ?', [k]))?.value;
@@ -207,19 +208,23 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     };
   }
 
-  async function exportCsv(fromDate, toDate, employeeId) {
+  async function exportCsv(fromDate, toDate, employeeId, lang = 'en') {
+    const zh = lang === 'zh';
     const shifts = (await shiftsInRange(fromDate, toDate, employeeId)).filter((s) => s.clock_out).reverse();
-    const hm = (ms) => { const m = Math.round(ms / 60000); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`; };
-    const rows = [['Employee', 'Date', 'Clock in', 'Clock out', 'Break (min)', 'Duration (hours)', 'Duration (h:m)', 'Hourly rate', 'Gross', 'Note']];
+    const clk = zh ? (ms) => clockZh.format(ms) : clock;
+    const hm = (ms) => { const m = Math.round(ms / 60000); return zh ? `${Math.floor(m / 60)}小時${String(m % 60).padStart(2, '0')}分` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`; };
+    const rows = [zh
+      ? ['員工', '日期', '上班打卡', '下班打卡', '休息（分鐘）', '工時（小時）', '工時（時:分）', '時薪', '薪資', '備註']
+      : ['Employee', 'Date', 'Clock in', 'Clock out', 'Break (min)', 'Duration (hours)', 'Duration (h:m)', 'Hourly rate', 'Gross', 'Note']];
     const totals = {};
     for (const s of shifts) {
       const ms = workedMs(s), hrs = ms / 3600e3;
-      rows.push([s.name, dayKey(s.clock_in), clock(s.clock_in), clock(s.clock_out), s.break_min || 0, hrs.toFixed(2), hm(ms), s.hourly_rate || 0, Math.round(hrs * (s.hourly_rate || 0)), s.note || '']);
+      rows.push([s.name, dayKey(s.clock_in), clk(s.clock_in), clk(s.clock_out), s.break_min || 0, hrs.toFixed(2), hm(ms), s.hourly_rate || 0, Math.round(hrs * (s.hourly_rate || 0)), s.note || '']);
       const t = (totals[s.name] ||= { ms: 0, pay: 0 });
       t.ms += ms; t.pay += hrs * (s.hourly_rate || 0);
     }
     rows.push([]);
-    for (const [name, t] of Object.entries(totals)) rows.push([`TOTAL ${name}`, '', '', '', '', (t.ms / 3600e3).toFixed(2), hm(t.ms), '', Math.round(t.pay), '']);
+    for (const [name, t] of Object.entries(totals)) rows.push([`${zh ? '合計' : 'TOTAL'} ${name}`, '', '', '', '', (t.ms / 3600e3).toFixed(2), hm(t.ms), '', Math.round(t.pay), '']);
     const esc = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
     return '﻿' + rows.map((r) => r.map(esc).join(',')).join('\r\n');
   }
@@ -341,7 +346,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       if (p === '/api/admin/export.csv' && m === 'GET') {
         const from = url.searchParams.get('from'), to = url.searchParams.get('to');
         if (!isDate(from) || !isDate(to)) throw new HttpError(400, 'from/to required');
-        const csv = await exportCsv(from, to, Number(url.searchParams.get('employee')) || null);
+        const csv = await exportCsv(from, to, Number(url.searchParams.get('employee')) || null, url.searchParams.get('lang'));
         return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Disposition': `attachment; filename="parsley-timesheet-${from}_to_${to}.csv"` } });
       }
 
