@@ -46,9 +46,9 @@ DATA_DIR=./demo-data npm run demo && DATA_DIR=./demo-data npm start   # preview 
 
 ## Brand
 
-- Official logos (vino `#6E1E2E`, cream `#F9F6F1`, orange `#FF7A1A`) are in `public/brand/`. The app icon is `public/icons/logo.svg`.
+- Brand colours: vino `#6E1E2E`, cream `#F9F6F1`, orange `#FF7A1A`. App icons are in `public/icons/` (192, 512, 180 Apple, 270) with `public/favicon.ico`; the 404 page is `public/404.html`.
 - Every colour is a token at the top of `public/css/app.css`. Change `--vino-*`, `--cream`, `--orange` and so on there.
-- After changing the logo, rebuild the PNG icons with `node scripts/make-icons.cjs`. This needs Playwright.
+- After replacing `icon-512.png`, rebuild the Android round-safe icon with `node scripts/make-maskable.cjs` (needs Playwright).
 
 ## Tests
 

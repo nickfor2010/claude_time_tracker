@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>找不到這個頁面 · Parsley</title>
+  <meta name="theme-color" content="#6e1e2e">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&family=Plus+Jakarta+Sans:wght@600;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --vino: #6e1e2e; --cream: #f9f6f1; --orange: #ff7a1a; --ink: #2a1418; --ink-2: #5e4a4e; color-scheme: light; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --vino: #d06a7e; --cream: #170c0f; --ink: #f6eeee; --ink-2: #cdb9bd; color-scheme: dark; } }
+    :root[data-theme="dark"] { --vino: #d06a7e; --cream: #170c0f; --ink: #f6eeee; --ink-2: #cdb9bd; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100dvh; display: grid; place-items: center; background: var(--cream); color: var(--ink);
+      font-family: "Noto Sans TC", "Plus Jakarta Sans", system-ui, sans-serif; text-align: center; padding: 24px 16px; }
+    .code { position: relative; display: inline-block; font-family: "Plus Jakarta Sans", "Noto Sans TC", sans-serif; font-weight: 800;
+      font-size: clamp(96px, 26vw, 200px); line-height: 1; letter-spacing: .04em; color: var(--vino); padding-right: .32em; }
+    .code::after { content: ""; position: absolute; right: 0; top: -.02em; width: .22em; height: .22em; border-radius: 50%; background: var(--orange); }
+    h1 { margin: 40px 0 14px; font-size: clamp(26px, 5.5vw, 40px); font-weight: 700; letter-spacing: .12em; }
+    p { margin: 0; color: var(--ink-2); font-size: clamp(16px, 3.4vw, 22px); letter-spacing: .06em; line-height: 1.6; }
+    a { display: inline-flex; align-items: center; gap: 8px; margin-top: 34px; padding: 12px 22px; border-radius: 999px; background: var(--vino);
+      color: #fff; text-decoration: none; font-weight: 700; letter-spacing: .08em; }
+    a:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) a { color: #170c0f; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="code" aria-hidden="true">404</div>
+    <h1>找不到這個頁面</h1>
+    <p>甜點可能已經賣完了 — 回首頁看看其他美味吧！</p>
+    <a href="/">回首頁 · Back to home</a>
+  </main>
+</body>
+</html>
