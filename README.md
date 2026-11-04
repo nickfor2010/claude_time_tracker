@@ -36,17 +36,22 @@ DATA_DIR=./demo-data npm start
 | `APP_TIMEZONE` | `Asia/Taipei` | Timezone used to group shifts into days |
 | `ADMIN_PASSWORD` | `parsley` | Initial admin password, used on first start only |
 
-## Put it online
+## Put it online with Render
 
-Phones can only install the app over **HTTPS**. Any host that runs Node and keeps a persistent disk will work:
+This repo includes `render.yaml`, which sets everything up for you. It uses the Singapore region (closest to Taiwan), a 1 GB disk for the database, and the Taipei timezone.
 
-- **Render / Railway / Fly.io**: start command `npm start`. Attach a persistent disk and set `DATA_DIR` to its mount path, e.g. `/var/data`.
-- **Your own server or NAS**: run `npm start` behind Caddy or nginx for HTTPS.
+1. Sign in at [dashboard.render.com](https://dashboard.render.com) and connect your GitHub account.
+2. Click **New → Blueprint**, then choose the `claude_time_tracker` repository and the branch that holds the app.
+3. When Render asks for **ADMIN_PASSWORD**, type the password you want for the dashboard.
+4. Click **Apply** and wait about 2 minutes. You get a link like `https://parsley-time.onrender.com`.
+5. Open `…/admin`, sign in, and add your team under **Team**.
+6. Send staff the main link. **iPhone (Safari):** Share → Add to Home Screen. **Android (Chrome):** tap **Install**.
 
-Then send staff the link:
+**Plan and cost.** The blueprint uses the **Starter** plan plus a 1 GB disk, about US$7.25 a month. The free plan has no disk, so every shift would be erased on each restart. Free apps also fall asleep when nobody uses them.
 
-- **iPhone (Safari):** Share, then Add to Home Screen.
-- **Android (Chrome):** tap **Install** on the screen.
+**Backups.** Render takes daily snapshots of the disk. For an extra copy, export the CSV from Timesheets each month.
+
+**Your own domain (optional).** To use an address like `time.parsleyhao.com`, go to Render → Settings → Custom Domains and add a CNAME record at your DNS provider. Render adds HTTPS automatically.
 
 ## Brand
 

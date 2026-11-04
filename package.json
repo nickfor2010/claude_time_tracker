@@ -4,7 +4,7 @@
   "private": true,
   "description": "Parsley employee time clock (installable PWA) with a manager dashboard.",
   "main": "server.js",
-  "engines": { "node": ">=22.5" },
+  "engines": { "node": ">=22.13" },
   "scripts": {
     "start": "node --no-warnings server.js",
     "demo": "node --no-warnings scripts/seed-demo.js",

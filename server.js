@@ -414,6 +414,7 @@ function parseShiftTimes(b) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
+    if (url.pathname === '/healthz') { db.prepare('SELECT 1').get(); return send(res, 200, 'ok'); }
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
     serveStatic(req, res, decodeURIComponent(url.pathname));
