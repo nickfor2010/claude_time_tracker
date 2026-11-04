@@ -33,6 +33,10 @@ Each person is either **Hourly** (part-time) or **Monthly salary** (full-time). 
 - **Payroll page.** Every month you see each person's hours, overtime, base pay, extras, deductions and net pay. **Adjust** adds a bonus, insurance or another deduction, plus a note. **Mark paid** locks the payslip and notifies the employee. **Reopen** unlocks it again. **Export CSV** gives the whole month.
 - **Overtime.** Hours beyond the daily hours are paid ×1.34 for the first 2 h, then ×1.67. For monthly staff, all hours worked on a non-work day count as overtime.
 - **Monthly staff.** The hourly value is salary ÷ 240. Approved leave below 100% pay is deducted, e.g. 事假 is a full day's pay and 病假 is half. Scheduled days with no punches and no leave are flagged but not deducted.
+- **National holidays (國定假日).** The official Taiwan calendars for 2026 and 2027 are pre-loaded, including substitute days (補假). You can add or remove dates in Settings → National holidays.
+  - A holiday is a paid day off: monthly staff already have it in their salary, and hourly staff get their daily hours paid when it falls on one of their work days.
+  - Working on a holiday earns an extra day's wage. Hours beyond the normal day are paid as overtime.
+  - Leave days and "missing days" skip holidays.
 - **Payslips.** Bilingual (中文 + English) and printable to A4/PDF. Staff see their paid payslips under **Payslips** on their phone.
 - **Settings.** Every rate is editable in Settings → Overtime and Paid leave. Please have your accountant confirm them.
 

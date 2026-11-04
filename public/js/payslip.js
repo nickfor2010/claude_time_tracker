@@ -21,6 +21,8 @@ function render({ row: r, company }) {
     [L(monthly ? '月薪' : '本薪', monthly ? 'Monthly salary' : `Regular pay · ${h(r.hours.regular)} h × ${nt(r.rate)}`), r.earnings.base],
     r.earnings.overtime ? [L('加班費', `Overtime · ${h(r.hours.ot1)} h × ${r.rates.ot_rate1}${r.hours.ot2 ? ` + ${h(r.hours.ot2)} h × ${r.rates.ot_rate2}` : ''}`), r.earnings.overtime] : null,
     ...(!monthly ? r.leave.filter((l) => l.amount).map((l) => [L(`${leaveName[l.type][0]}（帶薪 ${l.pct}%）`, `${leaveName[l.type][1]} · ${l.days} d · paid ${l.pct}%`), l.amount]) : []),
+    r.earnings.holiday ? [L('國定假日工資', `Holiday pay · ${(r.holidays || []).filter((x) => x.paid).length} d × ${h(r.daily_hours)} h`), r.earnings.holiday] : null,
+    r.earnings.holiday_work ? [L('國定假日出勤加給', `Holiday work pay · ${h(r.hours.holiday)} h worked`), r.earnings.holiday_work] : null,
     r.earnings.bonus ? [L('獎金', 'Bonus'), r.earnings.bonus] : null,
   ].filter(Boolean);
   const ded = [
@@ -53,6 +55,7 @@ function render({ row: r, company }) {
         <div><small>加班 Overtime</small><b>${h(r.hours.ot1 + r.hours.ot2)}</b></div>
         <div><small>休假天數 Leave days</small><b>${h(leaveDays)}</b></div>
       </section>
+      ${(r.holidays || []).length ? `<div class="note"><b>國定假日 Holidays：</b>${r.holidays.map((x) => `${x.date.slice(5).replace('-', '/')} ${esc(x.name)}${x.worked ? `（出勤 worked ${h(x.worked)} h）` : ''}`).join('、')}</div>` : ''}
       ${r.note ? `<div class="note"><b>備註 Note：</b>${esc(r.note)}</div>` : ''}
       <div class="sign"><div>員工簽名 Employee signature</div><div>雇主簽章 Employer</div></div>
       <div class="foot-meta"><span>${esc(company || 'Parsley')}</span><span>${r.status === 'paid' ? '' : '此為草稿，金額可能變動 · Draft, amounts may change'}</span></div>

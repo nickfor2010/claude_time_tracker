@@ -100,6 +100,13 @@ function tickLive() {
 }
 
 // ---------- overview ----------
+function holidayName(h) { return isZh() ? h.name_zh : (h.name_en || h.name_zh); }
+function holidayLine(d) {
+  const h = (d.nextHolidays || [])[0];
+  if (!h) return '';
+  if (h.date === d.today) return ` <b style="color:var(--orange-700)">🎉 ${t('Today is a national holiday: {name}', { name: esc(holidayName(h)) })}</b>`;
+  return ` <span class="muted">· ${t('Next holiday: {name}, {date}', { name: esc(holidayName(h)), date: dateLabel(h.date, { weekday: 'short', month: 'short', day: 'numeric' }) })}</span>`;
+}
 function greeting() {
   const h = Number(clockNow({ hour: 'numeric', hourCycle: 'h23' }).replace(/\D/g, ''));
   return t(h < 12 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera');
@@ -109,7 +116,7 @@ function renderOverview() {
   const active = d.employees.filter((e) => e.active);
   $('#page').innerHTML = `
     <div class="page-head">
-      <div><h1>${t('{greet}, Chef', { greet: greeting() })}</h1><p>${t("Here's how the team is doing today.")}</p></div>
+      <div><h1>${t('{greet}, Chef', { greet: greeting() })}</h1><p>${t("Here's how the team is doing today.")}${holidayLine(d)}</p></div>
       <div class="toolbar"><button class="btn btn-ghost" data-goto="timesheets">${icons.sheet} ${t('Timesheets')}</button><button class="btn btn-primary" id="ov-add">${icons.plus} ${t('Add shift')}</button></div>
     </div>
     <div class="kpis">
@@ -424,7 +431,7 @@ function renderPayroll() {
       <div class="table-wrap"><table class="tbl pay-table">
         <thead><tr><th>${t('Employee')}</th><th class="num">${t('Hours')}</th><th class="num">${t('Overtime')}</th><th class="num">${t('Base')}</th><th class="num">${t('Extras')}</th><th class="num">${t('Deductions')}</th><th class="num">${t('Net')}</th><th></th></tr></thead>
         <tbody>${pr.rows.length ? pr.rows.map((r) => {
-          const extras = r.earnings.overtime + r.earnings.leave + r.earnings.bonus;
+          const extras = r.earnings.overtime + r.earnings.leave + (r.earnings.holiday || 0) + (r.earnings.holiday_work || 0) + r.earnings.bonus;
           const warn = [
             r.open_shifts ? t('{n} shift(s) without clock-out', { n: r.open_shifts }) : '',
             r.missing_days.length ? t('{n} work day(s) with no punches', { n: r.missing_days.length }) : '',
@@ -436,7 +443,7 @@ function renderPayroll() {
             <td class="num">${hrsLabel(r.hours.worked)}<span class="sub">${t('{n} days', { n: r.days_worked })}</span></td>
             <td class="num">${r.hours.ot1 + r.hours.ot2 ? hrsLabel(r.hours.ot1 + r.hours.ot2) : '—'}</td>
             <td class="num">${money(r.earnings.base)}</td>
-            <td class="num">${extras ? '+' + money(extras) : '—'}${r.earnings.bonus ? `<span class="sub">${t('bonus')} ${money(r.earnings.bonus)}</span>` : ''}</td>
+            <td class="num">${extras ? '+' + money(extras) : '—'}${(r.earnings.holiday || 0) + (r.earnings.holiday_work || 0) ? `<span class="sub">${t('holiday')} ${money((r.earnings.holiday || 0) + (r.earnings.holiday_work || 0))}</span>` : ''}${r.earnings.bonus ? `<span class="sub">${t('bonus')} ${money(r.earnings.bonus)}</span>` : ''}</td>
             <td class="num">${r.total_deductions ? '−' + money(r.total_deductions) : '—'}</td>
             <td class="num"><b>${money(r.net)}</b><span class="sub">${r.status === 'paid' ? `<span class="tag paid">${t('Paid')}</span> ${dateLabel(dayKey(r.paid_at), { month: 'numeric', day: 'numeric' })}` : `<span class="tag draft">${t('Draft')}</span>`}</span></td>
             <td><div class="acts">
@@ -483,6 +490,43 @@ function openPay(r) {
     } catch (e) { $('#pa-err').textContent = e.message; }
   };
   $('#dlg-pay').showModal();
+}
+
+// ---------- holidays (in Settings) ----------
+async function renderHolidays(year) {
+  state.holYear = year;
+  const card = $('#hol-card');
+  if (!card) return;
+  let list = [];
+  try { list = (await api(`/api/admin/holidays?year=${year}`)).holidays; } catch (e) { toast(e.message, true); }
+  card.innerHTML = `
+    <div class="hol-head"><h2>${t('National holidays')}</h2>
+      <div class="toolbar"><button class="btn btn-ghost btn-sm" data-y="${year - 1}" aria-label="${year - 1}">‹</button><b>${year}</b><button class="btn btn-ghost btn-sm" data-y="${year + 1}" aria-label="${year + 1}">›</button></div></div>
+    <p>${t('Paid days off used by payroll. The official Taiwan calendar is pre-loaded; add company days off or remove dates.')}</p>
+    <div class="hol-list">${list.length ? list.map((h) => `
+      <div class="hol-row"><span class="d">${dateLabel(h.date, { month: 'short', day: 'numeric', weekday: 'short' })}</span>
+        <span class="n">${esc(holidayName(h))}${h.source === 'custom' ? ` <span class="tag">${t('custom')}</span>` : ''}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" data-del="${h.date}" aria-label="${t('Delete')}">${icons.x}</button></div>`).join('')
+      : `<div class="empty">${t('No holidays for {year} yet.', { year })}</div>`}</div>
+    <form class="hol-add" id="hol-add">
+      <input class="input" type="date" id="ho-date" min="${year}-01-01" max="${year}-12-31" required aria-label="${t('Date')}">
+      <input class="input" id="ho-zh" placeholder="${t('Name (中文)')}" maxlength="40" required>
+      <input class="input" id="ho-en" placeholder="${t('Name (English)')}" maxlength="60">
+      <button class="btn btn-primary btn-sm">${icons.plus} ${t('Add')}</button>
+    </form>
+    <button class="btn btn-ghost btn-sm" id="hol-restore" style="justify-self:start">${t('Restore official {year} holidays', { year })}</button>`;
+  card.querySelectorAll('[data-y]').forEach((b) => (b.onclick = () => renderHolidays(Number(b.dataset.y))));
+  card.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
+    if (!confirm(t('Remove {date} from the holidays?', { date: dateLabel(b.dataset.del) }))) return;
+    await api(`/api/admin/holidays/${b.dataset.del}`, { method: 'DELETE' }).catch((e) => toast(e.message, true));
+    renderHolidays(year);
+  }));
+  $('#hol-add').onsubmit = async (ev) => {
+    ev.preventDefault();
+    try { await api('/api/admin/holidays', { method: 'POST', body: { date: $('#ho-date').value, name_zh: $('#ho-zh').value, name_en: $('#ho-en').value } }); toast(t('Holiday added')); renderHolidays(year); }
+    catch (e) { toast(e.message, true); }
+  };
+  $('#hol-restore').onclick = async () => { await api('/api/admin/holidays/restore', { method: 'POST', body: { year } }); toast(t('Official holidays restored')); renderHolidays(year); };
 }
 
 // ---------- team ----------
@@ -559,6 +603,7 @@ function renderSettings() {
         <p class="muted" style="margin:0">${t('Timezone: <b>{tz}</b> (set with the APP_TIMEZONE variable on the server).', { tz: esc(d.timezone) })}</p>
         <button class="btn btn-primary" style="justify-self:start">${t('Save')}</button>
       </form>
+      <div class="card hol-card" id="hol-card"></div>
       <form class="card" id="f-leavepay">
         <h2>${t('Paid leave')}</h2><p>${t('How much of the normal pay each type of approved leave earns. It is added to payroll and the CSV export.')}</p>
         <div class="row-2">${['annual', 'sick', 'personal', 'other'].map((k) => `
@@ -575,6 +620,8 @@ function renderSettings() {
           <div class="field"><label for="pc-r2">${t('Rate after')}</label><input class="input" type="number" min="1" max="3" step="0.01" id="pc-r2" value="${d.payroll?.ot_rate2 ?? 1.67}"></div>
         </div>
         <div class="field"><label for="pc-div">${t('Monthly salary ÷ hours = hourly value')}</label><input class="input" type="number" min="1" max="400" step="1" id="pc-div" value="${d.payroll?.divisor ?? 240}" style="max-width:120px"></div>
+        <label class="check"><input type="checkbox" id="pc-hfull" ${d.payroll?.holiday_full_day !== false ? 'checked' : ''}> ${t('Working on a holiday earns a full extra day (even for fewer hours)')}</label>
+        <label class="check"><input type="checkbox" id="pc-hpay" ${d.payroll?.holiday_pay_hourly !== false ? 'checked' : ''}> ${t('Pay hourly staff for holidays on their work days')}</label>
         <button class="btn btn-primary" style="justify-self:start">${t('Save')}</button>
       </form>
       <form class="card" id="f-pass">
@@ -589,9 +636,10 @@ function renderSettings() {
     ev.preventDefault();
     await api('/api/admin/settings', { method: 'POST', body: { company: $('#s-company').value, geo: $('#s-geo').checked, alert_hours: Number($('#s-alert').value) } }).then(() => { toast(t('Settings saved')); refresh(); }, (e) => toast(e.message, true));
   };
+  renderHolidays(Number(state.holYear || d.today.slice(0, 4)));
   $('#f-payroll').onsubmit = (ev) => {
     ev.preventDefault();
-    const payroll = { ot_auto: $('#pc-auto').checked, ot_rate1: Number($('#pc-r1').value), ot_tier: Number($('#pc-tier').value), ot_rate2: Number($('#pc-r2').value), divisor: Number($('#pc-div').value) };
+    const payroll = { ot_auto: $('#pc-auto').checked, ot_rate1: Number($('#pc-r1').value), ot_tier: Number($('#pc-tier').value), ot_rate2: Number($('#pc-r2').value), divisor: Number($('#pc-div').value), holiday_full_day: $('#pc-hfull').checked, holiday_pay_hourly: $('#pc-hpay').checked };
     api('/api/admin/settings', { method: 'POST', body: { payroll } }).then(() => { toast(t('Settings saved')); refresh(); }, (e) => toast(e.message, true));
   };
   $('#f-leavepay').onsubmit = async (ev) => {

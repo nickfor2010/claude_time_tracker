@@ -5,8 +5,12 @@
 // Overtime: hours beyond the person's daily hours on a day (for monthly staff, every hour on a
 // non-working day). The first `ot_tier` overtime hours pay `ot_rate1`, the rest `ot_rate2`.
 // Monthly staff's hourly value = salary / `divisor` (Taiwan practice: 30 days x 8 h = 240).
+// National holidays (Labor Standards Act art. 37/39): a paid day off. Working on one earns an extra
+// day's wage (`holiday_full_day`: a full day even for fewer hours, otherwise the hours worked), and
+// hours beyond the daily hours are overtime. Hourly staff get their daily hours paid for a holiday
+// that falls on one of their work days (`holiday_pay_hourly`); monthly staff already have it in salary.
 
-export const DEFAULT_PAYROLL = { ot_auto: true, ot_rate1: 1.34, ot_tier: 2, ot_rate2: 1.67, divisor: 240 };
+export const DEFAULT_PAYROLL = { ot_auto: true, ot_rate1: 1.34, ot_tier: 2, ot_rate2: 1.67, divisor: 240, holiday_full_day: true, holiday_pay_hourly: true };
 export const DEFAULT_LEAVE_PAY = { annual: 100, sick: 50, personal: 0, other: 0 };
 
 const addDays = (d, n) => { const [y, m, dd] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10); };
@@ -31,8 +35,10 @@ const hrs = (n) => Math.round(n * 100) / 100;
  * @param dayKey   ms -> 'YYYY-MM-DD' in the business timezone
  * @param today    'YYYY-MM-DD' (for "days without punches", only days up to today count)
  * @param now      ms, used for shifts still open
+ * @param holidays Map of 'YYYY-MM-DD' -> holiday name (national holidays in this month)
  */
-export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LEAVE_PAY, cfg = DEFAULT_PAYROLL, dayKey, today, now = Date.now() }) {
+export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LEAVE_PAY, cfg = DEFAULT_PAYROLL, dayKey, today, now = Date.now(), holidays = new Map() }) {
+  cfg = { ...DEFAULT_PAYROLL, ...cfg };
   const monthly = e.pay_type === 'monthly';
   const daily = Number(e.daily_hours) > 0 ? Number(e.daily_hours) : 8;
   const salary = Number(e.monthly_salary) || 0;
@@ -49,14 +55,19 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
     const d = dayKey(s.clock_in);
     perDay[d] = (perDay[d] || 0) + ms / 3600e3;
   }
-  let worked = 0, regular = 0, ot1 = 0, ot2 = 0;
+  let worked = 0, regular = 0, ot1 = 0, ot2 = 0, holidayWorked = 0, holidayExtraHours = 0;
   for (const [d, h] of Object.entries(perDay)) {
     worked += h;
-    const threshold = monthly && !wd.has(weekday(d)) ? 0 : daily;
+    const holiday = holidays.has(d);
+    const threshold = holiday ? daily : monthly && !wd.has(weekday(d)) ? 0 : daily;
     const over = cfg.ot_auto ? Math.max(0, h - threshold) : 0;
     regular += h - over;
     ot1 += Math.min(over, tier);
     ot2 += Math.max(0, over - tier);
+    if (holiday && h > 0) {
+      holidayWorked += h;
+      holidayExtraHours += cfg.holiday_full_day ? daily : Math.min(h, daily);
+    }
   }
 
   // Leave: only scheduled working days inside the month count
@@ -66,7 +77,7 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
   let leaveAdd = 0, leaveDeduct = 0;
   for (const r of leave) {
     for (let d = r.start_date > days[0] ? r.start_date : days[0]; d <= r.end_date && d <= days[days.length - 1]; d = addDays(d, 1)) {
-      if (!wd.has(weekday(d))) continue;
+      if (!wd.has(weekday(d)) || holidays.has(d)) continue; // holidays are already paid days off
       const share = r.half_day ? 0.5 : 1;
       const h = (monthly ? daily : Number(e.leave_hours ?? 8)) * share;
       const pct = Number(leavePay[r.type]) || 0;
@@ -78,24 +89,32 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
     }
   }
 
-  // Scheduled days with no punches and no leave (monthly staff, information only)
-  const missing = monthly ? days.filter((d) => d <= today && wd.has(weekday(d)) && !perDay[d] && !leaveDays.has(d)) : [];
+  // Holidays on this person's work days
+  const holidayDays = days.filter((d) => holidays.has(d) && wd.has(weekday(d)));
+  // Hourly staff: a holiday on a work day they didn't work is paid at their daily hours
+  const paidHolidays = !monthly && cfg.holiday_pay_hourly ? holidayDays.filter((d) => !perDay[d]) : [];
+  const holidayPay = paidHolidays.length * daily * rate;
+  const holidayWork = holidayExtraHours * rate;
+
+  // Scheduled days with no punches, no leave and no holiday (monthly staff, information only)
+  const missing = monthly ? days.filter((d) => d <= today && wd.has(weekday(d)) && !perDay[d] && !leaveDays.has(d) && !holidays.has(d)) : [];
 
   const bonus = Number(adj?.bonus) || 0;
   const insurance = adj && adj.insurance != null ? Number(adj.insurance) || 0 : Number(e.insurance) || 0;
   const other = Number(adj?.deduction) || 0;
   const base = monthly ? salary : regular * rate;
   const otPay = ot1 * rate * (Number(cfg.ot_rate1) || 1) + ot2 * rate * (Number(cfg.ot_rate2) || 1);
-  const gross = money(base) + money(otPay) + money(leaveAdd) + money(bonus);
+  const gross = money(base) + money(otPay) + money(leaveAdd) + money(holidayPay) + money(holidayWork) + money(bonus);
   const deductions = money(leaveDeduct) + money(insurance) + money(other);
 
   return {
     employee_id: e.id, name: e.name, color: e.color, pay_type: monthly ? 'monthly' : 'hourly', month,
     rate: hrs(rate), salary: money(salary), daily_hours: daily,
-    hours: { worked: hrs(worked), regular: hrs(regular), ot1: hrs(ot1), ot2: hrs(ot2) },
+    hours: { worked: hrs(worked), regular: hrs(regular), ot1: hrs(ot1), ot2: hrs(ot2), holiday: hrs(holidayWorked), holiday_extra: hrs(holidayExtraHours) },
+    holidays: holidayDays.map((d) => ({ date: d, name: holidays.get(d), worked: hrs(perDay[d] || 0), paid: paidHolidays.includes(d) })),
     days_worked: Object.keys(perDay).length, open_shifts: openShifts, missing_days: missing,
     leave: Object.values(leaveByType).map((l) => ({ ...l, hours: hrs(l.hours), amount: money(l.amount) })),
-    earnings: { base: money(base), overtime: money(otPay), leave: money(leaveAdd), bonus: money(bonus) },
+    earnings: { base: money(base), overtime: money(otPay), leave: money(leaveAdd), holiday: money(holidayPay), holiday_work: money(holidayWork), bonus: money(bonus) },
     deductions: { leave: money(leaveDeduct), insurance: money(insurance), other: money(other), other_note: adj?.deduction_note || '' },
     gross, total_deductions: deductions, net: gross - deductions,
     note: adj?.note || '',

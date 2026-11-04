@@ -331,6 +331,23 @@ const zh = {
   'Overtime rates must be between 1 and 3': '加班倍率必須介於 1 到 3',
   'Overtime hours must be between 0 and 12': '加班時數必須介於 0 到 12',
   'Hours per month must be between 1 and 400': '每月時數必須介於 1 到 400',
+  // holidays
+  'Today is a national holiday: {name}': '今天是國定假日：{name}',
+  'Next holiday: {name}, {date}': '下一個國定假日：{name}（{date}）',
+  'holiday': '國定假日',
+  'Working on a holiday earns a full extra day (even for fewer hours)': '國定假日出勤加發一日工資（即使未滿一天）',
+  'Pay hourly staff for holidays on their work days': '時薪員工的上班日遇國定假日照常給薪',
+  'National holidays': '國定假日',
+  'Paid days off used by payroll. The official Taiwan calendar is pre-loaded; add company days off or remove dates.': '薪資計算使用的有薪假日。已預先載入政府公告的行事曆，可自行新增公司休假日或刪除日期。',
+  'custom': '自訂',
+  'No holidays for {year} yet.': '{year} 年尚未設定國定假日。',
+  'Name (中文)': '名稱（中文）',
+  'Name (English)': '名稱（英文）',
+  'Add': '新增',
+  'Restore official {year} holidays': '恢復 {year} 年官方假日',
+  'Remove {date} from the holidays?': '要從假日中移除 {date} 嗎？',
+  'Holiday added': '已新增假日',
+  'Official holidays restored': '已恢復官方假日',
 };
 
 export function getLang() {

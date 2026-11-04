@@ -1,5 +1,6 @@
 import { createVapidKeys, sendPush } from './push.js';
 import { computePay, DEFAULT_PAYROLL, workDaySet, weekday as wdOf } from './payroll.js';
+import { TW_HOLIDAYS } from './holidays-tw.js';
 // Parsley Time — platform-independent API core.
 // Runs on Cloudflare Workers (D1) and on Node.js (node:sqlite) through a tiny async DB adapter:
 //   db.all(sql, params) -> rows, db.get(sql, params) -> row|null, db.run(sql, params) -> { lastId }, db.batch(sqls)
@@ -34,6 +35,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS payroll_runs (month TEXT NOT NULL, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
      bonus REAL DEFAULT 0, deduction REAL DEFAULT 0, deduction_note TEXT DEFAULT '', insurance REAL, note TEXT DEFAULT '',
      status TEXT NOT NULL DEFAULT 'draft', snapshot TEXT, paid_at INTEGER, PRIMARY KEY (month, employee_id))`,
+  `CREATE TABLE IF NOT EXISTS holidays (date TEXT PRIMARY KEY, name_zh TEXT NOT NULL, name_en TEXT NOT NULL DEFAULT '', source TEXT DEFAULT 'official')`,
   `CREATE TABLE IF NOT EXISTS push_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, employee_id INTEGER, endpoint TEXT NOT NULL,
      p256dh TEXT NOT NULL, auth TEXT NOT NULL, lang TEXT DEFAULT 'en', created_at INTEGER NOT NULL, UNIQUE(endpoint, role))`,
 ];
@@ -149,6 +151,15 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       await setSetting('admin_default', adminPassword ? '0' : '1');
     }
     if (!(await getSetting('company'))) await setSetting('company', 'Parsley 帕斯里');
+    // Load the official Taiwan holiday list once (and again when a newer built-in year is added).
+    const seeded = Number(await getSetting('holidays_seeded') || 0);
+    const latestYear = Number(TW_HOLIDAYS[TW_HOLIDAYS.length - 1][0].slice(0, 4));
+    if (seeded < latestYear) {
+      for (const [date, zh, en] of TW_HOLIDAYS) {
+        if (Number(date.slice(0, 4)) > seeded) await db.run('INSERT INTO holidays(date, name_zh, name_en, source) VALUES(?, ?, ?, ?) ON CONFLICT(date) DO NOTHING', [date, zh, en, 'official']);
+      }
+      await setSetting('holidays_seeded', String(latestYear));
+    }
   }
   const ensureReady = () => (ready ||= init().catch((e) => { ready = null; throw e; }));
 
@@ -238,6 +249,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       leaveEntries(monthStart, lastDayOfMonth(monthStart)),
       payrollMonth(today.slice(0, 7)),
     ]);
+    const nextHolidays = await db.all('SELECT * FROM holidays WHERE date >= ? ORDER BY date LIMIT 3', [today]);
     const days = Array.from({ length: 14 }, (_, i) => ({ date: addDays(chartStart, i), byEmp: {} }));
     const totals = { todayMs: 0, weekMs: 0, monthMs: 0, monthPay: 0, monthLeavePay: 0, monthLeaveDays: 0 };
     const perEmp = Object.fromEntries(employees.map((e) => [e.id, { todayMs: 0, weekMs: 0, monthMs: 0, monthLeavePay: 0, monthLeaveDays: 0 }]));
@@ -261,7 +273,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       now, today, timezone: TZ, company, geo: geo === '1', adminDefaultPassword: adminDefault === '1', alertHours: Number(alertHours) || 12,
       employees: employees.map((e) => ({ ...publicEmployee(e), ...perEmp[e.id], onShift: onShift.some((s) => s.employee_id === e.id) })),
       totals, onShift, days, activity,
-      pendingLeave: pendingLeave.n, leaveSoon: leaveSoon.map(withDays), leavePay: await leavePayRates(), payroll: pr.cfg,
+      pendingLeave: pendingLeave.n, leaveSoon: leaveSoon.map(withDays), leavePay: await leavePayRates(), payroll: pr.cfg, nextHolidays,
     };
   }
 
@@ -329,6 +341,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
   // One entry per approved leave day inside [fromDate, toDate], with paid hours and pay.
   async function leaveEntries(fromDate, toDate, employeeId) {
     const rates = await leavePayRates();
+    const hol = await holidayMap(fromDate, toDate);
     const params = [toDate, fromDate];
     if (employeeId) params.push(employeeId);
     const rows = await db.all(`SELECT l.*, e.name, e.color, e.hourly_rate, e.leave_hours, e.pay_type, e.daily_hours, e.work_days FROM leave_requests l JOIN employees e ON e.id = l.employee_id
@@ -337,7 +350,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     for (const r of rows) {
       const wd = workDaySet(r), monthly = r.pay_type === 'monthly';
       for (let d = r.start_date > fromDate ? r.start_date : fromDate; d <= r.end_date && d <= toDate; d = addDays(d, 1)) {
-        if (!wd.has(wdOf(d))) continue; // only scheduled working days count as leave
+        if (!wd.has(wdOf(d)) || hol.has(d)) continue; // only scheduled working days that aren't holidays count as leave
         const hours = (monthly ? (r.daily_hours ?? 8) : (r.leave_hours ?? 8)) * (r.half_day ? 0.5 : 1);
         const pct = Number(rates[r.type]) || 0;
         out.push({ request_id: r.id, employee_id: r.employee_id, name: r.name, color: r.color, hourly_rate: r.hourly_rate || 0, pay_type: monthly ? 'monthly' : 'hourly',
@@ -347,6 +360,12 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     return out.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
   }
 
+  // ---------- holidays ----------
+  async function holidayMap(from, to) {
+    const rows = await db.all('SELECT * FROM holidays WHERE date >= ? AND date <= ? ORDER BY date', [from, to]);
+    return new Map(rows.map((h) => [h.date, `${h.name_zh}${h.name_en ? ' ' + h.name_en : ''}`]));
+  }
+
   // ---------- payroll ----------
   async function payrollCfg() {
     try { return { ...DEFAULT_PAYROLL, ...JSON.parse((await getSetting('payroll')) || '{}') }; } catch { return { ...DEFAULT_PAYROLL }; }
@@ -354,12 +373,12 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
   // Payroll rows for a month. Paid rows come from their saved snapshot so later edits don't change a paid payslip.
   async function payrollMonth(month, onlyEmployeeId = null) {
     const from = `${month}-01`, to = lastDayOfMonth(from);
-    const [employees, shifts, leave, runs, leavePay, cfg] = await Promise.all([
+    const [employees, shifts, leave, runs, leavePay, cfg, holidays] = await Promise.all([
       db.all('SELECT * FROM employees ORDER BY created_at'),
       shiftsInRange(from, to),
       db.all("SELECT * FROM leave_requests WHERE status = 'approved' AND start_date <= ? AND end_date >= ?", [to, from]),
       db.all('SELECT * FROM payroll_runs WHERE month = ?', [month]),
-      leavePayRates(), payrollCfg(),
+      leavePayRates(), payrollCfg(), holidayMap(from, to),
     ]);
     const today = dayKey(Date.now()), now = Date.now();
     const rows = [];
@@ -373,10 +392,10 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       if (!onlyEmployeeId && e.pay_type !== 'monthly' && !mine.length && !myLeave.length && !run) continue;
       if (run?.status === 'paid' && run.snapshot) {
         const snap = JSON.parse(run.snapshot);
-        const fresh = computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now });
+        const fresh = computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now, holidays });
         rows.push({ ...snap, status: 'paid', paid_at: run.paid_at, changed_since_paid: fresh.net !== snap.net });
       } else {
-        rows.push({ ...computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now }), status: 'draft' });
+        rows.push({ ...computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now, holidays }), status: 'draft' });
       }
     }
     const totals = rows.reduce((t, r) => ({ gross: t.gross + r.gross, deductions: t.deductions + r.total_deductions, net: t.net + r.net,
@@ -386,12 +405,12 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
   function payrollCsv(pr, lang) {
     const zh = lang === 'zh';
     const H = zh
-      ? ['員工', '計薪方式', '工時', '加班 (1.34)', '加班 (1.67)', '本薪', '加班費', '帶薪假', '獎金', '請假扣款', '勞健保', '其他扣款', '應發', '實發', '狀態']
-      : ['Employee', 'Pay type', 'Hours', 'Overtime (1.34)', 'Overtime (1.67)', 'Base', 'Overtime pay', 'Paid leave', 'Bonus', 'Leave deduction', 'Insurance', 'Other deduction', 'Gross', 'Net', 'Status'];
+      ? ['員工', '計薪方式', '工時', '加班 (1.34)', '加班 (1.67)', '本薪', '加班費', '帶薪假', '國定假日工資', '國定假日出勤加給', '獎金', '請假扣款', '勞健保', '其他扣款', '應發', '實發', '狀態']
+      : ['Employee', 'Pay type', 'Hours', 'Overtime (1.34)', 'Overtime (1.67)', 'Base', 'Overtime pay', 'Paid leave', 'Holiday pay', 'Holiday work pay', 'Bonus', 'Leave deduction', 'Insurance', 'Other deduction', 'Gross', 'Net', 'Status'];
     const rows = [H, ...pr.rows.map((r) => [r.name, zh ? (r.pay_type === 'monthly' ? '月薪' : '時薪') : r.pay_type, r.hours.worked, r.hours.ot1, r.hours.ot2,
-      r.earnings.base, r.earnings.overtime, r.earnings.leave, r.earnings.bonus, r.deductions.leave, r.deductions.insurance, r.deductions.other,
+      r.earnings.base, r.earnings.overtime, r.earnings.leave, r.earnings.holiday || 0, r.earnings.holiday_work || 0, r.earnings.bonus, r.deductions.leave, r.deductions.insurance, r.deductions.other,
       r.gross, r.net, zh ? (r.status === 'paid' ? '已發放' : '草稿') : r.status])];
-    rows.push([zh ? '合計' : 'TOTAL', '', Math.round(pr.totals.hours * 100) / 100, '', '', '', '', '', '', '', '', '', pr.totals.gross, pr.totals.net, '']);
+    rows.push([zh ? '合計' : 'TOTAL', '', Math.round(pr.totals.hours * 100) / 100, '', '', '', '', '', '', '', '', '', '', '', pr.totals.gross, pr.totals.net, '']);
     const esc = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
     return '\uFEFF' + rows.map((r) => r.map(esc).join(',')).join('\r\n');
   }
@@ -625,6 +644,31 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         return json(200, { ok: true });
       }
 
+      if (p === '/api/admin/holidays' && m === 'GET') {
+        const year = /^\d{4}$/.test(url.searchParams.get('year') || '') ? url.searchParams.get('year') : dayKey(Date.now()).slice(0, 4);
+        return json(200, { year, holidays: await db.all('SELECT * FROM holidays WHERE date LIKE ? ORDER BY date', [`${year}-%`]) });
+      }
+      if (p === '/api/admin/holidays' && m === 'POST') {
+        const b = await readBody(req);
+        if (!isDate(b.date)) throw new HttpError(400, 'Choose the dates');
+        if (!String(b.name_zh || b.name_en || '').trim()) throw new HttpError(400, 'Name is required');
+        await db.run('INSERT INTO holidays(date, name_zh, name_en, source) VALUES(?, ?, ?, ?) ON CONFLICT(date) DO UPDATE SET name_zh = excluded.name_zh, name_en = excluded.name_en, source = excluded.source',
+          [b.date, String(b.name_zh || b.name_en).trim().slice(0, 40), String(b.name_en || '').trim().slice(0, 60), 'custom']);
+        return json(200, { ok: true });
+      }
+      let hm;
+      if ((hm = p.match(/^\/api\/admin\/holidays\/(\d{4}-\d{2}-\d{2})$/)) && m === 'DELETE') {
+        await db.run('DELETE FROM holidays WHERE date = ?', [hm[1]]);
+        return json(200, { ok: true });
+      }
+      if (p === '/api/admin/holidays/restore' && m === 'POST') {
+        const { year } = await readBody(req);
+        for (const [date, zh, en] of TW_HOLIDAYS) {
+          if (date.startsWith(String(year))) await db.run('INSERT INTO holidays(date, name_zh, name_en, source) VALUES(?, ?, ?, ?) ON CONFLICT(date) DO NOTHING', [date, zh, en, 'official']);
+        }
+        return json(200, { ok: true });
+      }
+
       const isMonth = (x) => typeof x === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(x);
       if (p === '/api/admin/payroll' && m === 'GET') {
         const month = url.searchParams.get('month');
@@ -713,6 +757,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
             ot_tier: n(c.ot_tier, 0, 12, 'Overtime hours must be between 0 and 12'),
             ot_rate2: n(c.ot_rate2, 1, 3, 'Overtime rates must be between 1 and 3'),
             divisor: n(c.divisor, 1, 400, 'Hours per month must be between 1 and 400'),
+            holiday_full_day: c.holiday_full_day !== false,
+            holiday_pay_hourly: c.holiday_pay_hourly !== false,
           }));
         }
         if (b.alert_hours !== undefined) {

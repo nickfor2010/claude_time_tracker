@@ -156,6 +156,24 @@ test('full punch flow', async () => {
   assert.equal((await client()('/api/admin/payroll?month=2026-12')).status, 401);
   assert.equal((await client()('/api/payslips')).status, 401);
 
+  // Holidays: official list is pre-loaded; custom days can be added/removed and change payroll
+  const hol = (await admin('/api/admin/holidays?year=2026')).data.holidays;
+  assert.ok(hol.some((h) => h.date === '2026-09-25' && h.name_zh === '中秋節'));
+  assert.equal(hol.length, 16);
+  assert.equal((await admin('/api/admin/holidays', { method: 'POST', body: { date: '2026-12-31', name_zh: '公司年終', name_en: 'Company year-end' } })).status, 200);
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { pay_type: 'hourly', hourly_rate: 200, daily_hours: 8, work_days: '1,2,3,4,5' } });
+  pr = (await admin('/api/admin/payroll?month=2026-12')).data;
+  row = pr.rows.find((r) => r.employee_id === emp.id);
+  // Dec 25 (Constitution Day) and Dec 31 (custom) are paid days off for an hourly Mon–Fri worker: 2 x 8 h x 200
+  assert.equal(row.earnings.holiday, 3200);
+  assert.deepEqual(row.holidays.map((h) => h.date), ['2026-12-25', '2026-12-31']);
+  assert.equal((await admin('/api/admin/holidays/2026-12-31', { method: 'DELETE' })).status, 200);
+  assert.equal((await admin('/api/admin/holidays?year=2026')).data.holidays.length, 16);
+  await admin('/api/admin/holidays/2026-09-25', { method: 'DELETE' });
+  await admin('/api/admin/holidays/restore', { method: 'POST', body: { year: 2026 } });
+  assert.equal((await admin('/api/admin/holidays?year=2026')).data.holidays.length, 16);
+  assert.match((await admin('/api/admin/payroll.csv?month=2026-12')).data, /Holiday pay,Holiday work pay/);
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

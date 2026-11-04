@@ -398,3 +398,20 @@ dialog { overflow-x: hidden; }
 .pay-table .sub .tag { font-size: 10.5px; }
 .pay-table tfoot td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: none; }
 .warn-line { color: var(--clay); font-size: 11.5px; font-weight: 600; display: block; white-space: normal; max-width: 220px; }
+
+/* holidays card */
+.hol-card { padding: 20px; display: grid; gap: 12px; align-content: start; }
+.hol-card h2 { margin: 0; font-size: 16px; }
+.hol-card p { margin: -4px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.hol-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hol-head .toolbar { gap: 4px; }
+.hol-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; }
+.hol-row { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.hol-row:last-child { border-bottom: none; }
+.hol-row .d { width: 110px; flex: none; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.hol-row .n { flex: 1; min-width: 0; }
+.hol-row .btn { margin-left: auto; }
+.hol-add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hol-add .btn { justify-self: start; }
+.settings-grid { align-items: start; }
+.hol-add #ho-date { grid-column: 1 / -1; }
