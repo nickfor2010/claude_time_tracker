@@ -27,7 +27,6 @@ async function showTeam() {
   $('#top-right').innerHTML = '';
   const { employees, company, timezone } = await api('/api/team');
   setTimezone(timezone);
-  if (company) $('#company-sub').textContent = company.replace(/^Parsley\s*/, '') || 'Time clock';
   $('#team-grid').innerHTML = employees.length
     ? employees.map((e) => `<button class="team-btn" data-id="${e.id}">${avatar(e)}<span class="nm">${esc(e.name)}</span>${e.role ? `<span class="rl">${esc(e.role)}</span>` : ''}</button>`).join('')
     : `<div class="card empty" style="grid-column:1/-1">No team members yet.<br>Ask your manager to add you in the <a href="/admin">dashboard</a>.</div>`;

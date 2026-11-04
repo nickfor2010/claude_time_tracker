@@ -46,8 +46,8 @@ DATA_DIR=./demo-data npm run demo && DATA_DIR=./demo-data npm start   # preview 
 
 ## Brand
 
-- The logo is `public/icons/logo.svg`.
-- Every colour is a token at the top of `public/css/app.css`. Change `--parsley-*`, `--honey` and so on there.
+- Official logos (vino `#6E1E2E`, cream `#F9F6F1`, orange `#FF7A1A`) are in `public/brand/`. The app icon is `public/icons/logo.svg`.
+- Every colour is a token at the top of `public/css/app.css`. Change `--vino-*`, `--cream`, `--orange` and so on there.
 - After changing the logo, rebuild the PNG icons with `node scripts/make-icons.cjs`. This needs Playwright.
 
 ## Tests

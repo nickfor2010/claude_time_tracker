@@ -10,9 +10,9 @@ const out = (f) => path.join(__dirname, '../public/icons', f);
   const render = async (size, file, { maskable = false, square = false } = {}) => {
     await page.setViewportSize({ width: size, height: size });
     const inner = maskable ? Math.round(size * 0.72) : size;
-    const bg = maskable || square ? '#1f5e3a' : 'transparent';
+    const bg = maskable || square ? '#6E1E2E' : 'transparent';
     // Full-bleed for maskable/apple icons: the platform applies its own rounding.
-    const s = maskable || square ? svg.replace('rx="18"', 'rx="0"') : svg;
+    const s = maskable || square ? svg.replace(/rx="[\d.]+"/, 'rx="0"') : svg;
     await page.setContent(`<html><body style="margin:0;background:${bg};display:grid;place-items:center;width:${size}px;height:${size}px">
       <div style="width:${inner}px;height:${inner}px">${s.replace('<svg ', `<svg width="${inner}" height="${inner}" `)}</div></body></html>`);
     await page.screenshot({ path: out(file), omitBackground: !(maskable || square) });
