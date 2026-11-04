@@ -41,6 +41,7 @@ function serveStatic(req, res) {
   let pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (pathname === '/') pathname = '/index.html';
   if (pathname === '/admin' || pathname === '/admin/') pathname = '/admin.html';
+  if (/^\/[a-z0-9-]+$/.test(pathname) && fs.existsSync(path.join(PUBLIC_DIR, pathname + '.html'))) pathname += '.html'; // same short URLs as Cloudflare
   const file = path.normalize(path.join(PUBLIC_DIR, pathname));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403); return res.end('Forbidden'); }
   fs.stat(file, (err, st) => {

@@ -668,7 +668,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
           later(notify('emp', id, (lang) => ({
             title: lang === 'zh' ? '薪資單已發放' : 'Your payslip is ready',
             body: lang === 'zh' ? `${month} 實發 NT$ ${row.net.toLocaleString('en-US')}` : `${month} · net NT$ ${row.net.toLocaleString('en-US')}`,
-            url: `/payslip.html?month=${month}`, tag: `payslip-${month}`,
+            url: `/payslip?month=${month}`, tag: `payslip-${month}`,
           }), origin));
           return json(200, { ok: true });
         }

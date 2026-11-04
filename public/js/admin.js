@@ -440,7 +440,7 @@ function renderPayroll() {
             <td class="num">${r.total_deductions ? '−' + money(r.total_deductions) : '—'}</td>
             <td class="num"><b>${money(r.net)}</b><span class="sub">${r.status === 'paid' ? `<span class="tag paid">${t('Paid')}</span> ${dateLabel(dayKey(r.paid_at), { month: 'numeric', day: 'numeric' })}` : `<span class="tag draft">${t('Draft')}</span>`}</span></td>
             <td><div class="acts">
-              <a class="btn btn-ghost btn-icon btn-sm" href="/payslip.html?month=${state.month}&emp=${r.employee_id}" target="_blank" rel="noopener" title="${t('Payslip')}" aria-label="${t('Payslip')}">${icons.sheet}</a>
+              <a class="btn btn-ghost btn-icon btn-sm" href="/payslip?month=${state.month}&emp=${r.employee_id}" target="_blank" rel="noopener" title="${t('Payslip')}" aria-label="${t('Payslip')}">${icons.sheet}</a>
               ${r.status === 'paid'
                 ? `<button class="btn btn-ghost btn-sm" data-reopen="${r.employee_id}">${t('Reopen')}</button>`
                 : `<button class="btn btn-ghost btn-sm" data-adjust="${r.employee_id}">${t('Adjust')}</button><button class="btn btn-primary btn-sm" data-paid="${r.employee_id}">${t('Mark paid')}</button>`}

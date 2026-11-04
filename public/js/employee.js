@@ -160,7 +160,7 @@ function renderPunch() {
 function renderPayslips() {
   $('#payslip-block').classList.toggle('hidden', !payslips.length);
   $('#payslip-list').innerHTML = payslips.map((p) => `
-    <a class="tl-row" href="/payslip.html?month=${p.month}" style="color:inherit;text-decoration:none">
+    <a class="tl-row" href="/payslip?month=${p.month}" style="color:inherit;text-decoration:none">
       <div class="tl-ico">${icons.coins}</div>
       <div class="tl-main"><div class="t">${dateLabel(p.month + '-01', { month: 'long', year: 'numeric' })}</div><div class="s">${t('Paid')} · ${dateLabel(dayKey(p.paid_at))}</div></div>
       <div class="tl-dur">${money(p.net)}</div>
