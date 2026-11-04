@@ -6,6 +6,7 @@ const PAGES = [
   { id: 'overview', label: 'Overview', icon: 'home' },
   { id: 'timesheets', label: 'Timesheets', icon: 'sheet' },
   { id: 'timeoff', label: 'Time off', icon: 'plane' },
+  { id: 'payroll', label: 'Payroll', icon: 'coins' },
   { id: 'team', label: 'Team', icon: 'users' },
   { id: 'settings', label: 'Settings', icon: 'gear' },
 ];
@@ -64,6 +65,7 @@ async function refresh() {
     state.data = await api('/api/admin/overview');
     if (state.page === 'timesheets') await loadShifts();
     if (state.page === 'timeoff') state.leave = (await api('/api/admin/leave')).requests;
+    if (state.page === 'payroll') state.payroll = await api(`/api/admin/payroll?month=${state.month}`);
   } catch (e) { if (e.status === 401) return boot(); toast(e.message, true); }
   render();
 }
@@ -86,7 +88,7 @@ function render() {
     ? `<div class="banner">${icons.alert}<span>${t("You're using the default admin password. Please change it.")}</span><button class="btn btn-sm btn-ghost" data-goto="settings">${t('Change now')}</button></div>` : '');
   $('#banner').querySelectorAll('[data-fix]').forEach((b) => (b.onclick = () => openShift(d.onShift.find((s) => s.id === Number(b.dataset.fix)), { forgot: true })));
   $('#side-live').innerHTML = `${t('<b>{n}</b> of {total} on shift now', { n: d.onShift.length, total: d.employees.filter((e) => e.active).length })}<br>${dateLabel(d.today, { weekday: 'long', month: 'long', day: 'numeric' })}`;
-  ({ overview: renderOverview, timesheets: renderTimesheets, timeoff: renderTimeoff, team: renderTeam, settings: renderSettings })[state.page]();
+  ({ overview: renderOverview, timesheets: renderTimesheets, timeoff: renderTimeoff, payroll: renderPayroll, team: renderTeam, settings: renderSettings })[state.page]();
   clearInterval(liveTimer);
   liveTimer = setInterval(tickLive, 1000);
 }
@@ -135,7 +137,7 @@ function renderOverview() {
       <div class="card panel">
         <div class="panel-head"><h2>${t('This week by person')}</h2><span class="muted">${t('Mon – today')}</span></div>
         <div class="table-wrap"><table class="tbl"><thead><tr><th>${t('Employee')}</th><th class="num">${t('Today')}</th><th class="num">${t('Week')}</th><th class="num">${t('Month')}</th><th class="num">${t('Month pay')}</th></tr></thead><tbody>
-        ${active.map((e) => `<tr><td><span class="emp">${avatar(e)}${esc(e.name)}</span></td><td class="num">${dur(e.todayMs)}</td><td class="num">${dur(e.weekMs)}</td><td class="num">${dur(e.monthMs)}</td><td class="num">${money(e.monthMs / 3600e3 * e.hourly_rate + (e.monthLeavePay || 0))}</td></tr>`).join('') || `<tr><td colspan="5" class="muted">${t('No team members yet.')}</td></tr>`}
+        ${active.map((e) => `<tr><td><span class="emp">${avatar(e)}${esc(e.name)}</span></td><td class="num">${dur(e.todayMs)}</td><td class="num">${dur(e.weekMs)}</td><td class="num">${dur(e.monthMs)}</td><td class="num">${money(e.monthGross || 0)}</td></tr>`).join('') || `<tr><td colspan="5" class="muted">${t('No team members yet.')}</td></tr>`}
         </tbody></table></div>
       </div>
       <div class="card panel">
@@ -259,7 +261,7 @@ function renderTimesheets() {
             <td colspan="2"><span class="tag leave">${icons.plane.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px"')} ${leaveLabel(l.type)}${l.half_day ? ' · ' + t('half day') : ''}</span></td>
             <td class="num">—</td>
             <td class="num"><b>${dur(l.hours * 3600e3)}</b></td>
-            <td class="num">${money(l.pay)}</td>
+            <td class="num">${l.pay_type === 'monthly' ? `<span class="muted">${t('Salary')}</span>` : money(l.pay)}</td>
             <td class="muted">${t('Paid leave {pct}%', { pct: l.pct })}</td>
             <td class="acts"><button class="btn btn-ghost btn-icon btn-sm" data-goto="timeoff" aria-label="${t('Time off')}">${icons.plane}</button></td>
           </tr>`;
@@ -272,7 +274,7 @@ function renderTimesheets() {
             <td class="tnum">${s.clock_out ? time(s.clock_out) : isForgotten(s) ? `<span class="tag warn">${t('CHECK · NO CLOCK-OUT')}</span>` : `<span class="tag live">${t('ON SHIFT')}</span>`}</td>
             <td class="num">${s.break_min ? s.break_min + 'm' : '—'}</td>
             <td class="num"><b>${s.clock_out ? dur(w) : `<span data-since="${s.clock_in}">${dur(w)}</span>`}</b></td>
-            <td class="num">${money((w / 3600e3) * (s.hourly_rate || 0))}</td>
+            <td class="num">${s.pay_type === 'monthly' ? `<span class="muted">${t('Salary')}</span>` : money((w / 3600e3) * (s.hourly_rate || 0))}</td>
             <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(s.note)}${s.edited ? `<span class="tag">${t('edited')}</span>` : ''}</td>
             <td class="acts"><button class="btn btn-ghost btn-icon btn-sm" data-edit="${s.id}" aria-label="${t('Edit shift')}">${icons.edit}</button></td>
           </tr>`;
@@ -389,6 +391,100 @@ async function renderAdminNotif() {
   if (test) test.onclick = () => api('/api/push/test?role=admin', { method: 'POST', body: {} }).then(() => toast(t('Test sent')), (e) => toast(e.message, true));
 }
 
+// ---------- payroll ----------
+// 2026-11-02 was a Monday; used only to get localized weekday names.
+const weekdayShort = (d) => dateLabel(`2026-11-0${d === 0 ? 8 : d + 1}`, { weekday: 'short' });
+function workDaysLabel(wd) {
+  const set = String(wd ?? '1,2,3,4,5').split(',').filter(Boolean).map(Number);
+  if (!set.length) return t('No fixed days');
+  return [1, 2, 3, 4, 5, 6, 0].filter((d) => set.includes(d)).map(weekdayShort).join(' ');
+}
+const hrsLabel = (h) => (Math.round(h * 10) / 10).toLocaleString() + ' ' + t('h');
+
+function renderPayroll() {
+  const pr = state.payroll, d = state.data;
+  if (!pr) return;
+  const monthName = dateLabel(`${state.month}-01`, { month: 'long', year: 'numeric' });
+  const paid = pr.rows.filter((r) => r.status === 'paid').length;
+  $('#page').innerHTML = `
+    <div class="page-head">
+      <div><h1>${t('Payroll')}</h1><p>${t('{month} · {paid} of {n} paid', { month: monthName, paid, n: pr.rows.length })}</p></div>
+      <div class="toolbar">
+        <input class="input" type="month" id="pr-month" value="${state.month}" aria-label="${t('Month')}">
+        <a class="btn btn-ghost" href="/api/admin/payroll.csv?month=${state.month}&lang=${isZh() ? 'zh' : 'en'}">${icons.download} ${t('Export CSV')}</a>
+      </div>
+    </div>
+    <div class="kpis" style="margin-bottom:14px">
+      <div class="card kpi hero"><div class="k">${icons.coins} ${t('Total gross pay')}</div><div class="v">${money(pr.totals.gross)}</div><div class="h">${t('{n} people', { n: pr.rows.length })}</div></div>
+      <div class="card kpi"><div class="k">${icons.check} ${t('Net to pay')}</div><div class="v">${money(pr.totals.net)}</div><div class="h">${t('after deductions')}</div></div>
+      <div class="card kpi"><div class="k">${icons.clock} ${t('Hours worked')}</div><div class="v">${Math.round(pr.totals.hours)}<small>${t('h')}</small></div><div class="h">${t('{h} h overtime', { h: Math.round(pr.totals.overtime * 10) / 10 })}</div></div>
+      <div class="card kpi"><div class="k">${icons.alert} ${t('Deductions')}</div><div class="v">${money(pr.totals.deductions)}</div><div class="h">${t('leave, insurance, other')}</div></div>
+    </div>
+    <div class="card panel" style="padding:6px">
+      <div class="table-wrap"><table class="tbl pay-table">
+        <thead><tr><th>${t('Employee')}</th><th class="num">${t('Hours')}</th><th class="num">${t('Overtime')}</th><th class="num">${t('Base')}</th><th class="num">${t('Extras')}</th><th class="num">${t('Deductions')}</th><th class="num">${t('Net')}</th><th></th></tr></thead>
+        <tbody>${pr.rows.length ? pr.rows.map((r) => {
+          const extras = r.earnings.overtime + r.earnings.leave + r.earnings.bonus;
+          const warn = [
+            r.open_shifts ? t('{n} shift(s) without clock-out', { n: r.open_shifts }) : '',
+            r.missing_days.length ? t('{n} work day(s) with no punches', { n: r.missing_days.length }) : '',
+            r.changed_since_paid ? t('Hours or rates changed after payment') : '',
+          ].filter(Boolean);
+          return `<tr>
+            <td><span class="emp">${avatar(r)}<span>${esc(r.name)}<span class="sub"><span class="tag ${r.pay_type}">${r.pay_type === 'monthly' ? t('Monthly') : t('Hourly')}</span> ${r.pay_type === 'monthly' ? money(r.salary) : money(r.rate) + '/' + t('h')}</span></span></span>
+              ${warn.map((w) => `<span class="warn-line">⚠ ${w}</span>`).join('')}</td>
+            <td class="num">${hrsLabel(r.hours.worked)}<span class="sub">${t('{n} days', { n: r.days_worked })}</span></td>
+            <td class="num">${r.hours.ot1 + r.hours.ot2 ? hrsLabel(r.hours.ot1 + r.hours.ot2) : '—'}</td>
+            <td class="num">${money(r.earnings.base)}</td>
+            <td class="num">${extras ? '+' + money(extras) : '—'}${r.earnings.bonus ? `<span class="sub">${t('bonus')} ${money(r.earnings.bonus)}</span>` : ''}</td>
+            <td class="num">${r.total_deductions ? '−' + money(r.total_deductions) : '—'}</td>
+            <td class="num"><b>${money(r.net)}</b><span class="sub">${r.status === 'paid' ? `<span class="tag paid">${t('Paid')}</span> ${dateLabel(dayKey(r.paid_at), { month: 'numeric', day: 'numeric' })}` : `<span class="tag draft">${t('Draft')}</span>`}</span></td>
+            <td><div class="acts">
+              <a class="btn btn-ghost btn-icon btn-sm" href="/payslip.html?month=${state.month}&emp=${r.employee_id}" target="_blank" rel="noopener" title="${t('Payslip')}" aria-label="${t('Payslip')}">${icons.sheet}</a>
+              ${r.status === 'paid'
+                ? `<button class="btn btn-ghost btn-sm" data-reopen="${r.employee_id}">${t('Reopen')}</button>`
+                : `<button class="btn btn-ghost btn-sm" data-adjust="${r.employee_id}">${t('Adjust')}</button><button class="btn btn-primary btn-sm" data-paid="${r.employee_id}">${t('Mark paid')}</button>`}
+            </div></td>
+          </tr>`;
+        }).join('') : `<tr><td colspan="9"><div class="empty">${t('No one to pay for {month}.', { month: monthName })}</div></td></tr>`}</tbody>
+        ${pr.rows.length ? `<tfoot><tr><td>${t('Total')}</td><td class="num">${hrsLabel(pr.totals.hours)}</td><td class="num">${hrsLabel(pr.totals.overtime)}</td><td></td><td></td><td class="num">−${money(pr.totals.deductions)}</td><td class="num">${money(pr.totals.net)}</td><td></td></tr></tfoot>` : ''}
+      </table></div>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin-top:12px">${t('Overtime: hours beyond each person\'s daily hours (and all hours on a non-work day for monthly staff) are paid ×{r1} for the first {tier} h, then ×{r2}. Monthly staff\'s hourly value is salary ÷ {div}. Change these in Settings.', { r1: pr.cfg.ot_rate1, tier: pr.cfg.ot_tier, r2: pr.cfg.ot_rate2, div: pr.cfg.divisor })}</p>`;
+  $('#pr-month').onchange = (e) => { if (e.target.value) { state.month = e.target.value; refresh(); } };
+  $('#page').querySelectorAll('[data-adjust]').forEach((b) => (b.onclick = () => openPay(pr.rows.find((r) => r.employee_id === Number(b.dataset.adjust)))));
+  $('#page').querySelectorAll('[data-paid]').forEach((b) => (b.onclick = async () => {
+    const r = pr.rows.find((x) => x.employee_id === Number(b.dataset.paid));
+    if (!confirm(t('Mark {name} as paid {net} for {month}? The payslip is then locked and {name} can see it in the app.', { name: r.name, net: money(r.net), month: monthName }))) return;
+    try { await api(`/api/admin/payroll/${state.month}/${r.employee_id}/paid`, { method: 'POST' }); toast(t('{name} marked as paid', { name: r.name })); refresh(); }
+    catch (e) { toast(e.message, true); }
+  }));
+  $('#page').querySelectorAll('[data-reopen]').forEach((b) => (b.onclick = async () => {
+    if (!confirm(t('Reopen this payslip? It will be recalculated with the current hours and rates, and hidden from the employee until you mark it paid again.'))) return;
+    try { await api(`/api/admin/payroll/${state.month}/${b.dataset.reopen}/reopen`, { method: 'POST' }); refresh(); }
+    catch (e) { toast(e.message, true); }
+  }));
+}
+function openPay(r) {
+  $('#pay-title').textContent = t('Adjust pay for {name}', { name: r.name });
+  $('#pay-hint').textContent = dateLabel(`${state.month}-01`, { month: 'long', year: 'numeric' });
+  $('#pa-bonus').value = r.earnings.bonus || '';
+  $('#pa-ins').value = r.deductions.insurance;
+  $('#pa-ded').value = r.deductions.other || '';
+  $('#pa-dednote').value = r.deductions.other_note || '';
+  $('#pa-note').value = r.note || '';
+  $('#pa-err').textContent = '';
+  $('#form-pay').onsubmit = async (ev) => {
+    if (ev.submitter?.value !== 'save') return;
+    ev.preventDefault();
+    try {
+      await api(`/api/admin/payroll/${state.month}/${r.employee_id}`, { method: 'POST', body: { bonus: $('#pa-bonus').value, insurance: $('#pa-ins').value, deduction: $('#pa-ded').value, deduction_note: $('#pa-dednote').value, note: $('#pa-note').value } });
+      $('#dlg-pay').close(); toast(t('Saved')); refresh();
+    } catch (e) { $('#pa-err').textContent = e.message; }
+  };
+  $('#dlg-pay').showModal();
+}
+
 // ---------- team ----------
 function renderTeam() {
   const d = state.data;
@@ -399,7 +495,7 @@ function renderTeam() {
     </div>
     <div class="team-cards">${d.employees.length ? d.employees.slice().sort((a, b) => b.active - a.active).map((e) => `
       <div class="card member ${e.active ? '' : 'inactive'}">
-        <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${money(e.hourly_rate)}/${t('h')} · ${t('{h}h per leave day', { h: e.leave_hours ?? 8 })}${e.active ? '' : ' · ' + t('inactive')}</div></div>
+        <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${e.pay_type === 'monthly' ? `${money(e.monthly_salary)}/${t('month')}` : `${money(e.hourly_rate)}/${t('h')}`} · ${workDaysLabel(e.work_days)}${e.active ? '' : ' · ' + t('inactive')}</div></div>
           <button class="btn btn-ghost btn-icon btn-sm" style="margin-left:auto" data-emp="${e.id}" aria-label="${t('Edit {name}', { name: esc(e.name) })}">${icons.edit}</button></div>
         <div class="member-stats"><div><div class="k">${t('Today')}</div><div class="v">${hours(e.todayMs)}h</div></div><div><div class="k">${t('Week')}</div><div class="v">${hours(e.weekMs)}h</div></div><div><div class="k">${t('Month')}</div><div class="v">${hours(e.monthMs)}h</div></div></div>
         ${e.onShift ? `<span class="pill pill-live" style="justify-self:start"><span class="dot"></span>${t('On shift now')}</span>` : ''}
@@ -414,6 +510,20 @@ function openEmp(e) {
   $('#em-role').value = e?.role || '';
   $('#em-rate').value = e ? e.hourly_rate : 196;
   $('#em-leave').value = e ? (e.leave_hours ?? 8) : 8;
+  $('#em-salary').value = e ? e.monthly_salary || '' : '';
+  $('#em-daily').value = e ? (e.daily_hours ?? 8) : 8;
+  $('#em-ins').value = e ? e.insurance || 0 : 0;
+  let payType = e?.pay_type || 'hourly';
+  const paintPay = () => {
+    $('#em-paytype').innerHTML = ['hourly', 'monthly'].map((k) => `<button type="button" role="radio" aria-checked="${k === payType}" data-pt="${k}">${t(k === 'hourly' ? 'Hourly (part-time)' : 'Monthly salary (full-time)')}</button>`).join('');
+    $('#form-emp').classList.toggle('is-hourly', payType === 'hourly');
+    $('#form-emp').classList.toggle('is-monthly', payType === 'monthly');
+    $('#em-salary').required = payType === 'monthly';
+  };
+  $('#em-paytype').onclick = (ev) => { const b = ev.target.closest('[data-pt]'); if (b) { payType = b.dataset.pt; paintPay(); } };
+  paintPay();
+  const days = new Set(String(e?.work_days ?? '1,2,3,4,5').split(',').filter(Boolean).map(Number));
+  $('#em-days').innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" value="${d}" ${days.has(d) ? 'checked' : ''}><span>${weekdayShort(d)}</span></label>`).join('');
   $('#em-pin').value = '';
   $('#em-pin').required = !e;
   $('#em-pin-label').textContent = e ? t('New PIN (leave empty to keep)') : t('PIN (4–6 digits)');
@@ -423,7 +533,9 @@ function openEmp(e) {
   $('#form-emp').onsubmit = async (ev) => {
     if (ev.submitter?.value !== 'save') return;
     ev.preventDefault();
-    const body = { name: $('#em-name').value, role: $('#em-role').value, hourly_rate: Number($('#em-rate').value) || 0, leave_hours: Number($('#em-leave').value), pin: $('#em-pin').value };
+    const body = { name: $('#em-name').value, role: $('#em-role').value, hourly_rate: Number($('#em-rate').value) || 0, leave_hours: Number($('#em-leave').value), pin: $('#em-pin').value,
+      pay_type: payType, monthly_salary: Number($('#em-salary').value) || 0, daily_hours: Number($('#em-daily').value) || 8, insurance: Number($('#em-ins').value) || 0,
+      work_days: [...$('#em-days').querySelectorAll('input:checked')].map((i) => i.value).join(',') };
     if (e) body.active = $('#em-active').checked;
     try {
       await api(e ? `/api/admin/employees/${e.id}` : '/api/admin/employees', { method: e ? 'PATCH' : 'POST', body });
@@ -454,6 +566,17 @@ function renderSettings() {
         <p class="muted" style="margin:0;font-size:12.5px">${t('Common in Taiwan: annual leave 100%, sick leave 50%, personal leave unpaid. Paid hours per leave day are set for each person in Team.')}</p>
         <button class="btn btn-primary" style="justify-self:start">${t('Save')}</button>
       </form>
+      <form class="card" id="f-payroll">
+        <h2>${t('Overtime')}</h2><p>${t('Used for payroll. Defaults follow the Taiwan Labor Standards Act.')}</p>
+        <label class="check"><input type="checkbox" id="pc-auto" ${d.payroll?.ot_auto !== false ? 'checked' : ''}> ${t('Pay overtime automatically')}</label>
+        <div class="row-3">
+          <div class="field"><label for="pc-r1">${t('Rate, first hours')}</label><input class="input" type="number" min="1" max="3" step="0.01" id="pc-r1" value="${d.payroll?.ot_rate1 ?? 1.34}"></div>
+          <div class="field"><label for="pc-tier">${t('First hours')}</label><input class="input" type="number" min="0" max="12" step="0.5" id="pc-tier" value="${d.payroll?.ot_tier ?? 2}"></div>
+          <div class="field"><label for="pc-r2">${t('Rate after')}</label><input class="input" type="number" min="1" max="3" step="0.01" id="pc-r2" value="${d.payroll?.ot_rate2 ?? 1.67}"></div>
+        </div>
+        <div class="field"><label for="pc-div">${t('Monthly salary ÷ hours = hourly value')}</label><input class="input" type="number" min="1" max="400" step="1" id="pc-div" value="${d.payroll?.divisor ?? 240}" style="max-width:120px"></div>
+        <button class="btn btn-primary" style="justify-self:start">${t('Save')}</button>
+      </form>
       <form class="card" id="f-pass">
         <h2>${t('Admin password')}</h2><p>${t('Used to open this dashboard.')}</p>
         <div class="field"><label for="s-cur">${t('Current password')}</label><input class="input" type="password" id="s-cur" autocomplete="current-password" required></div>
@@ -465,6 +588,11 @@ function renderSettings() {
   $('#f-company').onsubmit = async (ev) => {
     ev.preventDefault();
     await api('/api/admin/settings', { method: 'POST', body: { company: $('#s-company').value, geo: $('#s-geo').checked, alert_hours: Number($('#s-alert').value) } }).then(() => { toast(t('Settings saved')); refresh(); }, (e) => toast(e.message, true));
+  };
+  $('#f-payroll').onsubmit = (ev) => {
+    ev.preventDefault();
+    const payroll = { ot_auto: $('#pc-auto').checked, ot_rate1: Number($('#pc-r1').value), ot_tier: Number($('#pc-tier').value), ot_rate2: Number($('#pc-r2').value), divisor: Number($('#pc-div').value) };
+    api('/api/admin/settings', { method: 'POST', body: { payroll } }).then(() => { toast(t('Settings saved')); refresh(); }, (e) => toast(e.message, true));
   };
   $('#f-leavepay').onsubmit = async (ev) => {
     ev.preventDefault();

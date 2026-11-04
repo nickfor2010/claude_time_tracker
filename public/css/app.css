@@ -379,3 +379,22 @@ dialog { overflow-x: hidden; }
 
 .tag.leave { background: var(--tint); color: var(--primary); display: inline-flex; align-items: center; gap: 4px; margin-left: 0; }
 .leave-row td { background: color-mix(in srgb, var(--tint) 45%, transparent); }
+
+/* ============ Payroll ============ */
+.days { display: flex; flex-wrap: wrap; gap: 6px; }
+.days label { display: inline-flex; }
+.days input { position: absolute; opacity: 0; pointer-events: none; }
+.days span { min-width: 42px; text-align: center; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--line); font-weight: 600; font-size: 13.5px; color: var(--ink-2); cursor: pointer; background: var(--surface); }
+.days input:checked + span { background: var(--primary); border-color: var(--primary); color: #fff; }
+.days input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+#form-emp.is-hourly .pay-monthly, #form-emp.is-monthly .pay-hourly { display: none; }
+.tag.monthly { background: color-mix(in srgb, var(--vino) 12%, transparent); color: var(--vino); margin-left: 0; }
+.tag.hourly { margin-left: 0; }
+.tag.paid { background: #e6f4ea; color: #1e7b3c; margin-left: 0; }
+.tag.draft { margin-left: 0; }
+.pay-table td .sub { display: block; font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+.pay-table .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
+.pay-table td, .pay-table th { padding-left: 8px; padding-right: 8px; }
+.pay-table .sub .tag { font-size: 10.5px; }
+.pay-table tfoot td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: none; }
+.warn-line { color: var(--clay); font-size: 11.5px; font-weight: 600; display: block; white-space: normal; max-width: 220px; }

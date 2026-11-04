@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Payslip 薪資單 · Parsley</title>
+  <meta name="theme-color" content="#6e1e2e">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    body { background: var(--surface-2); }
+    .slip-wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 40px; }
+    .slip-tools { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .slip { background: #fff; color: #2a1418; border-radius: 18px; box-shadow: var(--shadow); padding: 34px 36px; }
+    .slip-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; border-bottom: 2px solid #6e1e2e; padding-bottom: 18px; }
+    .slip-head img { width: 54px; height: 54px; border-radius: 14px; }
+    .slip-head .co { display: flex; gap: 14px; align-items: center; }
+    .slip-head h1 { font-family: var(--font-display); font-size: 26px; margin: 0; color: #6e1e2e; }
+    .slip-head .title { text-align: right; }
+    .slip-head .title b { display: block; font-size: 20px; letter-spacing: .08em; }
+    .slip-head .title span { color: #8c7a7d; font-size: 14px; }
+    .who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+    .who div { background: #f9f6f1; border-radius: 12px; padding: 10px 12px; }
+    .who small { display: block; color: #8c7a7d; font-size: 11.5px; font-weight: 600; }
+    .who b { font-size: 15px; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    .slip h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: #6e1e2e; margin: 0 0 8px; }
+    .lines { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .lines td { padding: 7px 0; border-bottom: 1px dashed #eae3dc; }
+    .lines td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .lines td small { color: #8c7a7d; display: block; font-size: 11.5px; }
+    .lines tr.sum td { border-bottom: none; border-top: 2px solid #2a1418; font-weight: 700; padding-top: 9px; }
+    .net { margin-top: 22px; display: flex; justify-content: space-between; align-items: center; background: #6e1e2e; color: #fff; border-radius: 14px; padding: 16px 20px; }
+    .net span { font-size: 15px; font-weight: 600; }
+    .net b { font-size: 28px; font-variant-numeric: tabular-nums; }
+    .hours { margin-top: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; }
+    .hours div { border: 1px solid #eae3dc; border-radius: 12px; padding: 10px 6px; }
+    .hours small { display: block; color: #8c7a7d; font-size: 11.5px; }
+    .hours b { font-variant-numeric: tabular-nums; }
+    .slip .note { margin-top: 16px; font-size: 13.5px; background: #f9f6f1; border-radius: 12px; padding: 10px 12px; }
+    .sign { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; font-size: 12.5px; color: #8c7a7d; }
+    .sign div { border-top: 1px solid #2a1418; padding-top: 6px; }
+    .foot-meta { margin-top: 18px; font-size: 11.5px; color: #8c7a7d; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .draft-mark { color: #c0392b; font-weight: 700; }
+    @media (max-width: 600px) {
+      .slip { padding: 22px 18px; }
+      .cols, .who { grid-template-columns: 1fr; }
+      .hours { grid-template-columns: repeat(2, 1fr); }
+      .slip-head { flex-direction: column; }
+      .slip-head .title { text-align: left; }
+    }
+    @media print {
+      body { background: #fff; }
+      .slip-tools { display: none; }
+      .slip-wrap { padding: 0; max-width: none; }
+      .slip { box-shadow: none; border-radius: 0; padding: 0; }
+      .net { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @page { size: A4; margin: 16mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="slip-wrap">
+    <div class="slip-tools">
+      <a class="btn btn-ghost btn-sm" id="back" href="/">←</a>
+      <button class="btn btn-primary btn-sm" id="print">Print / PDF 列印</button>
+    </div>
+    <div id="slip"><div class="card empty">…</div></div>
+  </div>
+  <script type="module" src="/js/payslip.js"></script>
+</body>
+</html>

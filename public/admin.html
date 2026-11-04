@@ -82,14 +82,44 @@
     <form method="dialog" id="form-emp">
       <h3 id="emp-title">Add team member</h3>
       <div class="field"><label for="em-name" data-i18n>Name</label><input class="input" id="em-name" required maxlength="40"></div>
+      <div class="field"><label for="em-role" data-i18n>Role</label><input class="input" id="em-role" placeholder="Pastry chef" data-i18n-placeholder="Pastry chef" maxlength="40"></div>
+      <div class="field"><label data-i18n>Pay type</label><div class="seg" id="em-paytype" role="radiogroup"></div></div>
       <div class="row-2">
-        <div class="field"><label for="em-role" data-i18n>Role</label><input class="input" id="em-role" placeholder="Pastry chef" data-i18n-placeholder="Pastry chef" maxlength="40"></div>
-        <div class="field"><label for="em-rate" data-i18n>Hourly rate (NT$)</label><input class="input" type="number" min="0" step="1" id="em-rate" value="196"></div>
+        <div class="field pay-hourly"><label for="em-rate" data-i18n>Hourly rate (NT$)</label><input class="input" type="number" min="0" step="1" id="em-rate" value="196"></div>
+        <div class="field pay-monthly"><label for="em-salary" data-i18n>Monthly salary (NT$)</label><input class="input" type="number" min="0" step="100" id="em-salary" value="0"></div>
+        <div class="field"><label for="em-daily" data-i18n>Hours per work day</label><input class="input" type="number" min="1" max="24" step="0.5" id="em-daily" value="8"></div>
       </div>
-      <div class="field"><label for="em-leave" data-i18n>Paid hours per leave day</label><input class="input" type="number" min="0" max="24" step="0.5" id="em-leave" value="8" style="max-width:140px"></div>
+      <div class="field"><label data-i18n>Work days</label><div class="days" id="em-days"></div></div>
+      <div class="row-2">
+        <div class="field pay-hourly"><label for="em-leave" data-i18n>Paid hours per leave day</label><input class="input" type="number" min="0" max="24" step="0.5" id="em-leave" value="8"></div>
+        <div class="field"><label for="em-ins" data-i18n>Insurance deduction / month (NT$)</label><input class="input" type="number" min="0" step="1" id="em-ins" value="0"></div>
+      </div>
       <div class="field"><label for="em-pin" id="em-pin-label">PIN (4–6 digits)</label><input class="input" id="em-pin" inputmode="numeric" pattern="\d{4,6}" maxlength="6" autocomplete="off"></div>
       <label class="check hidden" id="em-active-wrap"><input type="checkbox" id="em-active"> <span data-i18n>Active (can clock in)</span></label>
       <div class="err" id="em-err"></div>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" value="cancel" formnovalidate data-i18n>Cancel</button>
+        <button class="btn btn-primary" value="save" data-i18n>Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Payroll adjustment dialog -->
+  <dialog id="dlg-pay">
+    <form method="dialog" id="form-pay">
+      <h3 id="pay-title"></h3>
+      <p class="muted" id="pay-hint" style="margin:-6px 0 0;font-size:13.5px"></p>
+      <div class="row-2">
+        <div class="field"><label for="pa-bonus" data-i18n>Bonus (NT$)</label><input class="input" type="number" min="0" step="1" id="pa-bonus"></div>
+        <div class="field"><label for="pa-ins" data-i18n>Insurance (NT$)</label><input class="input" type="number" min="0" step="1" id="pa-ins"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label for="pa-ded" data-i18n>Other deduction (NT$)</label><input class="input" type="number" min="0" step="1" id="pa-ded"></div>
+        <div class="field"><label for="pa-dednote" data-i18n>Deduction reason</label><input class="input" id="pa-dednote" maxlength="100"></div>
+      </div>
+      <div class="field"><label for="pa-note" data-i18n>Note on payslip</label><input class="input" id="pa-note" maxlength="300"></div>
+      <div class="err" id="pa-err"></div>
       <div class="dlg-actions">
         <span class="spacer"></span>
         <button class="btn btn-ghost" value="cancel" formnovalidate data-i18n>Cancel</button>

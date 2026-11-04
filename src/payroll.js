@@ -1,0 +1,104 @@
+// Payroll maths for one employee and one month. Pure functions: no database, easy to test.
+//
+// Hourly staff:  regular hours x rate + overtime + paid leave + bonus − deductions
+// Monthly staff: salary + overtime − unpaid part of leave + bonus − deductions
+// Overtime: hours beyond the person's daily hours on a day (for monthly staff, every hour on a
+// non-working day). The first `ot_tier` overtime hours pay `ot_rate1`, the rest `ot_rate2`.
+// Monthly staff's hourly value = salary / `divisor` (Taiwan practice: 30 days x 8 h = 240).
+
+export const DEFAULT_PAYROLL = { ot_auto: true, ot_rate1: 1.34, ot_tier: 2, ot_rate2: 1.67, divisor: 240 };
+export const DEFAULT_LEAVE_PAY = { annual: 100, sick: 50, personal: 0, other: 0 };
+
+const addDays = (d, n) => { const [y, m, dd] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10); };
+export const weekday = (d) => new Date(d + 'T00:00:00Z').getUTCDay(); // 0 = Sunday
+export function monthDays(month) {
+  const [y, m] = month.split('-').map(Number);
+  const n = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
+}
+export const workDaySet = (e) => new Set(String(e.work_days ?? '1,2,3,4,5').split(',').filter((x) => x !== '').map(Number));
+const money = (n) => Math.round(n);
+const hrs = (n) => Math.round(n * 100) / 100;
+
+/**
+ * @param e        employee row (pay_type, hourly_rate, monthly_salary, daily_hours, work_days, leave_hours, insurance)
+ * @param month    'YYYY-MM'
+ * @param shifts   that employee's shifts that started in the month
+ * @param leave    that employee's approved leave requests overlapping the month
+ * @param adj      saved adjustments { bonus, deduction, deduction_note, insurance, note } or null
+ * @param leavePay percentage paid per leave type
+ * @param cfg      payroll settings (DEFAULT_PAYROLL shape)
+ * @param dayKey   ms -> 'YYYY-MM-DD' in the business timezone
+ * @param today    'YYYY-MM-DD' (for "days without punches", only days up to today count)
+ * @param now      ms, used for shifts still open
+ */
+export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LEAVE_PAY, cfg = DEFAULT_PAYROLL, dayKey, today, now = Date.now() }) {
+  const monthly = e.pay_type === 'monthly';
+  const daily = Number(e.daily_hours) > 0 ? Number(e.daily_hours) : 8;
+  const salary = Number(e.monthly_salary) || 0;
+  const rate = monthly ? salary / (Number(cfg.divisor) || 240) : Number(e.hourly_rate) || 0;
+  const wd = workDaySet(e);
+  const tier = Number(cfg.ot_tier) >= 0 ? Number(cfg.ot_tier) : 2;
+
+  // Hours per day
+  const perDay = {};
+  let openShifts = 0;
+  for (const s of shifts) {
+    if (!s.clock_out) openShifts++;
+    const ms = Math.max(0, (s.clock_out ?? now) - s.clock_in - (s.break_min || 0) * 60000);
+    const d = dayKey(s.clock_in);
+    perDay[d] = (perDay[d] || 0) + ms / 3600e3;
+  }
+  let worked = 0, regular = 0, ot1 = 0, ot2 = 0;
+  for (const [d, h] of Object.entries(perDay)) {
+    worked += h;
+    const threshold = monthly && !wd.has(weekday(d)) ? 0 : daily;
+    const over = cfg.ot_auto ? Math.max(0, h - threshold) : 0;
+    regular += h - over;
+    ot1 += Math.min(over, tier);
+    ot2 += Math.max(0, over - tier);
+  }
+
+  // Leave: only scheduled working days inside the month count
+  const days = monthDays(month);
+  const leaveDays = new Set();
+  const leaveByType = {};
+  let leaveAdd = 0, leaveDeduct = 0;
+  for (const r of leave) {
+    for (let d = r.start_date > days[0] ? r.start_date : days[0]; d <= r.end_date && d <= days[days.length - 1]; d = addDays(d, 1)) {
+      if (!wd.has(weekday(d))) continue;
+      const share = r.half_day ? 0.5 : 1;
+      const h = (monthly ? daily : Number(e.leave_hours ?? 8)) * share;
+      const pct = Number(leavePay[r.type]) || 0;
+      const t = (leaveByType[r.type] ||= { type: r.type, days: 0, hours: 0, pct, amount: 0 });
+      t.days += share; t.hours += h;
+      if (monthly) { const cut = h * rate * (1 - pct / 100); t.amount -= cut; leaveDeduct += cut; }
+      else { const pay = h * rate * pct / 100; t.amount += pay; leaveAdd += pay; }
+      leaveDays.add(d);
+    }
+  }
+
+  // Scheduled days with no punches and no leave (monthly staff, information only)
+  const missing = monthly ? days.filter((d) => d <= today && wd.has(weekday(d)) && !perDay[d] && !leaveDays.has(d)) : [];
+
+  const bonus = Number(adj?.bonus) || 0;
+  const insurance = adj && adj.insurance != null ? Number(adj.insurance) || 0 : Number(e.insurance) || 0;
+  const other = Number(adj?.deduction) || 0;
+  const base = monthly ? salary : regular * rate;
+  const otPay = ot1 * rate * (Number(cfg.ot_rate1) || 1) + ot2 * rate * (Number(cfg.ot_rate2) || 1);
+  const gross = money(base) + money(otPay) + money(leaveAdd) + money(bonus);
+  const deductions = money(leaveDeduct) + money(insurance) + money(other);
+
+  return {
+    employee_id: e.id, name: e.name, color: e.color, pay_type: monthly ? 'monthly' : 'hourly', month,
+    rate: hrs(rate), salary: money(salary), daily_hours: daily,
+    hours: { worked: hrs(worked), regular: hrs(regular), ot1: hrs(ot1), ot2: hrs(ot2) },
+    days_worked: Object.keys(perDay).length, open_shifts: openShifts, missing_days: missing,
+    leave: Object.values(leaveByType).map((l) => ({ ...l, hours: hrs(l.hours), amount: money(l.amount) })),
+    earnings: { base: money(base), overtime: money(otPay), leave: money(leaveAdd), bonus: money(bonus) },
+    deductions: { leave: money(leaveDeduct), insurance: money(insurance), other: money(other), other_note: adj?.deduction_note || '' },
+    gross, total_deductions: deductions, net: gross - deductions,
+    note: adj?.note || '',
+    rates: { ot_rate1: Number(cfg.ot_rate1), ot_rate2: Number(cfg.ot_rate2), ot_tier: tier },
+  };
+}

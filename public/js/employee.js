@@ -1,4 +1,4 @@
-import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, toast, registerSW, setTimezone, clockNow, pushStatus, enablePush, syncPush, LEAVE_TYPES, leaveLabel, leaveRange, statusPill } from './common.js';
+import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, money, toast, registerSW, setTimezone, clockNow, pushStatus, enablePush, syncPush, LEAVE_TYPES, leaveLabel, leaveRange, statusPill } from './common.js';
 import { t, translatePage, langButton } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
@@ -9,6 +9,7 @@ const RING = 691.15;
 
 let me = null;          // /api/me payload
 let leave = [];         // my time-off requests
+let payslips = [];      // my paid payslips
 let selected = null;    // employee chosen on the team screen
 let pin = '';
 let tick;
@@ -100,7 +101,7 @@ async function submitPin() {
 // ---------- punch screen ----------
 async function loadMe() {
   try {
-    [me, { requests: leave }] = await Promise.all([api('/api/me'), api('/api/leave')]);
+    [me, { requests: leave }, { payslips }] = await Promise.all([api('/api/me'), api('/api/leave'), api('/api/payslips')]);
     me.skew = Date.now() - me.now; // keep the timer honest if the phone clock is off
     setTimezone(me.timezone);
     renderPunch();
@@ -152,7 +153,18 @@ function renderPunch() {
     </div>`).join('') : `<div class="empty">${t('Your past shifts will appear here.')}</div>`;
 
   renderLeave();
+  renderPayslips();
   paintLive();
+}
+
+function renderPayslips() {
+  $('#payslip-block').classList.toggle('hidden', !payslips.length);
+  $('#payslip-list').innerHTML = payslips.map((p) => `
+    <a class="tl-row" href="/payslip.html?month=${p.month}" style="color:inherit;text-decoration:none">
+      <div class="tl-ico">${icons.coins}</div>
+      <div class="tl-main"><div class="t">${dateLabel(p.month + '-01', { month: 'long', year: 'numeric' })}</div><div class="s">${t('Paid')} · ${dateLabel(dayKey(p.paid_at))}</div></div>
+      <div class="tl-dur">${money(p.net)}</div>
+    </a>`).join('');
 }
 
 // ---------- time off ----------

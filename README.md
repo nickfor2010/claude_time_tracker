@@ -26,6 +26,16 @@ Staff tap **Time off → Request** on their phone, then choose the type (annual 
 
 Notifications are sent with standard Web Push. No outside service or account is needed, and the keys are created automatically.
 
+## Payroll (薪資)
+
+Each person is either **Hourly** (part-time) or **Monthly salary** (full-time). In **Team**, you also set their hours per work day, work days and monthly insurance deduction.
+
+- **Payroll page.** Every month you see each person's hours, overtime, base pay, extras, deductions and net pay. **Adjust** adds a bonus, insurance or another deduction, plus a note. **Mark paid** locks the payslip and notifies the employee. **Reopen** unlocks it again. **Export CSV** gives the whole month.
+- **Overtime.** Hours beyond the daily hours are paid ×1.34 for the first 2 h, then ×1.67. For monthly staff, all hours worked on a non-work day count as overtime.
+- **Monthly staff.** The hourly value is salary ÷ 240. Approved leave below 100% pay is deducted, e.g. 事假 is a full day's pay and 病假 is half. Scheduled days with no punches and no leave are flagged but not deducted.
+- **Payslips.** Bilingual (中文 + English) and printable to A4/PDF. Staff see their paid payslips under **Payslips** on their phone.
+- **Settings.** Every rate is editable in Settings → Overtime and Paid leave. Please have your accountant confirm them.
+
 ## Languages (English / 繁體中文)
 
 Every screen comes in English and Traditional Chinese (Taiwan). A phone set to Chinese opens in Chinese automatically, and the **中文 / EN** button switches language at any time. Each phone or computer remembers its own choice. The CSV export follows the dashboard language. All texts live in `public/js/i18n.js`.

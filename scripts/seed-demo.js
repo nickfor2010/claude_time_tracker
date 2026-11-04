@@ -22,7 +22,9 @@ const now = Date.now(), today = dayKey(now);
 let rnd = 7; const rand = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);
 const pin = await hashSecret('1234');
 for (const [i, [name, role, rate, start, len]] of team.entries()) {
-  const { lastId: id } = await db.run('INSERT INTO employees(name, role, pin_hash, color, hourly_rate, active, created_at) VALUES(?,?,?,?,?,1,?)', [name, role, pin, colors[i], rate, now - (10 - i) * 86400e3]);
+  const monthly = i === 0; // Vera is full-time on a monthly salary, the others are hourly
+  const { lastId: id } = await db.run('INSERT INTO employees(name, role, pin_hash, color, hourly_rate, pay_type, monthly_salary, insurance, active, created_at) VALUES(?,?,?,?,?,?,?,?,1,?)',
+    [name, role, pin, colors[i], monthly ? 0 : rate, monthly ? 'monthly' : 'hourly', monthly ? 46000 : 0, monthly ? 1150 : 0, now - (10 - i) * 86400e3]);
   for (let k = 21; k >= 0; k--) {
     const date = addDays(today, -k);
     const wd = new Date(date + 'T00:00:00Z').getUTCDay();

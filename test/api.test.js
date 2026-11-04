@@ -104,26 +104,57 @@ test('full punch flow', async () => {
   const all = (await admin('/api/admin/leave')).data.requests;
   assert.equal(all.find((r) => r.id === req1.id).status, 'approved');
   assert.equal(all.find((r) => r.id === req1.id).name, 'Vera');
-  // Paid leave: 3 approved annual days x 8h x NT$200 x 100% = 4800; half sick day 4h x 200 x 50% = 400
+  // Paid leave (Mon–Fri schedule): Dec 10–12 is Thu–Sat -> 2 annual days x 8h x NT$200 = 3200; half sick day 4h x 200 x 50% = 400
   const sick = (await phone('/api/leave', { method: 'POST', body: { type: 'sick', start: '2026-12-15', end: '2026-12-15', half: true } })).data;
   await admin(`/api/admin/leave/${sick.id}`, { method: 'POST', body: { status: 'approved' } });
   let dec = (await admin('/api/admin/shifts?from=2026-12-01&to=2026-12-31')).data.leave;
-  assert.equal(dec.length, 4);
-  assert.equal(dec.filter((l) => l.type === 'annual').reduce((a, l) => a + l.pay, 0), 4800);
+  assert.equal(dec.length, 3);
+  assert.equal(dec.filter((l) => l.type === 'annual').reduce((a, l) => a + l.pay, 0), 3200);
   assert.equal(dec.find((l) => l.type === 'sick').pay, 400);
   // a range that cuts a request in half only counts the days inside it
-  assert.equal((await admin('/api/admin/shifts?from=2026-12-11&to=2026-12-31')).data.leave.filter((l) => l.type === 'annual').length, 2);
+  assert.equal((await admin('/api/admin/shifts?from=2026-12-11&to=2026-12-31')).data.leave.filter((l) => l.type === 'annual').length, 1);
   // per-employee leave hours and pay rates are adjustable
   await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { leave_hours: 4 } });
   assert.equal((await admin('/api/admin/settings', { method: 'POST', body: { leave_pay: { annual: 150, sick: 50, personal: 0, other: 0 } } })).status, 400);
   assert.equal((await admin('/api/admin/settings', { method: 'POST', body: { leave_pay: { annual: 100, sick: 60, personal: 0, other: 0 } } })).status, 200);
   dec = (await admin('/api/admin/shifts?from=2026-12-01&to=2026-12-31')).data.leave;
-  assert.equal(dec.filter((l) => l.type === 'annual').reduce((a, l) => a + l.pay, 0), 2400);
+  assert.equal(dec.filter((l) => l.type === 'annual').reduce((a, l) => a + l.pay, 0), 1600);
   assert.equal(dec.find((l) => l.type === 'sick').pay, 2 * 200 * 0.6);
   const decCsv = (await admin('/api/admin/export.csv?from=2026-12-01&to=2026-12-31')).data;
   assert.match(decCsv, /Vera,2026-12-10,Annual leave,,,4\.00,4h 00m,200,800,Paid leave 100%/);
-  assert.match(decCsv, /GROSS PAY Vera,,,,,,,,2640/);
+  assert.match(decCsv, /GROSS PAY Vera,,,,,,,,1840/);
   assert.match((await admin('/api/admin/export.csv?from=2026-12-01&to=2026-12-31&lang=zh')).data, /帶薪假 100%/);
+
+  // Payroll: switch Vera to a monthly salary and check December
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { pay_type: 'monthly', monthly_salary: 48000, daily_hours: 8, work_days: '1,2,3,4,5', insurance: 1200 } });
+  let pr = (await admin('/api/admin/payroll?month=2026-12')).data;
+  let row = pr.rows.find((r) => r.employee_id === emp.id);
+  assert.equal(row.pay_type, 'monthly');
+  assert.equal(row.earnings.base, 48000);
+  // sick half day at 60%: 4h x (48000/240) x 40% unpaid = 320
+  assert.equal(row.deductions.leave, 320);
+  assert.equal(row.net, 48000 - 320 - 1200);
+  assert.equal((await admin(`/api/admin/payroll/2026-12/${emp.id}`, { method: 'POST', body: { bonus: 2000, deduction: 100, deduction_note: 'uniform' } })).status, 200);
+  row = (await admin(`/api/admin/payroll/2026-12/${emp.id}`)).data.row;
+  assert.equal(row.net, 48000 + 2000 - 320 - 1200 - 100);
+  assert.equal((await admin(`/api/admin/payroll/2026-12/${emp.id}/paid`, { method: 'POST' })).status, 200);
+  // paid payslips are frozen and visible to the employee
+  assert.equal((await admin(`/api/admin/payroll/2026-12/${emp.id}`, { method: 'POST', body: { bonus: 0 } })).status, 400);
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { monthly_salary: 50000 } });
+  row = (await admin(`/api/admin/payroll/2026-12/${emp.id}`)).data.row;
+  assert.equal(row.status, 'paid');
+  assert.equal(row.net, 48380);
+  assert.equal(row.changed_since_paid, true);
+  assert.deepEqual((await phone('/api/payslips')).data.payslips.map((x) => [x.month, x.net]), [['2026-12', 48380]]);
+  assert.equal((await phone('/api/payslips/2026-12')).data.row.earnings.bonus, 2000);
+  assert.equal((await phone('/api/payslips/2026-11')).status, 404);
+  assert.equal((await admin(`/api/admin/payroll/2026-12/${emp.id}/reopen`, { method: 'POST' })).status, 200);
+  assert.equal((await phone('/api/payslips')).data.payslips.length, 0);
+  assert.match((await admin('/api/admin/payroll.csv?month=2026-12&lang=zh')).data, /員工,計薪方式,工時/);
+  assert.equal((await admin('/api/admin/settings', { method: 'POST', body: { payroll: { ot_auto: true, ot_rate1: 5, ot_tier: 2, ot_rate2: 1.67, divisor: 240 } } })).status, 400);
+  assert.equal((await admin('/api/admin/settings', { method: 'POST', body: { payroll: { ot_auto: true, ot_rate1: 1.34, ot_tier: 2, ot_rate2: 1.67, divisor: 240 } } })).status, 200);
+  assert.equal((await client()('/api/admin/payroll?month=2026-12')).status, 401);
+  assert.equal((await client()('/api/payslips')).status, 401);
 
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
