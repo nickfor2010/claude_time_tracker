@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Parsley Dashboard</title>
+  <meta name="theme-color" content="#0f2e1d">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <!-- Login -->
+  <div class="login-screen hidden" id="login">
+    <form class="card login-card" id="login-form">
+      <div class="brand"><img src="/icons/logo.svg" alt=""><div><div class="brand-name">Parsley</div><div class="brand-sub">Manager dashboard</div></div></div>
+      <h1>Welcome back</h1>
+      <div class="field"><label for="pw">Admin password</label><input class="input" id="pw" type="password" autocomplete="current-password" required autofocus></div>
+      <div class="err" id="login-err"></div>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+      <a href="/" class="muted" style="font-size:13px;text-align:center">← Back to the time clock</a>
+    </form>
+  </div>
+
+  <!-- App -->
+  <div class="admin hidden" id="admin">
+    <aside class="side">
+      <a class="brand" href="/admin"><img src="/icons/logo.svg" alt=""><div><div class="brand-name">Parsley</div><div class="brand-sub">Team time</div></div></a>
+      <nav class="nav" id="nav"></nav>
+      <div class="side-foot">
+        <div class="side-card" id="side-live"></div>
+        <a class="btn" href="/" target="_blank" rel="noopener" data-icon="clock">Open time clock</a>
+        <button class="btn" id="logout" data-icon="logout">Sign out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="mobile-top">
+        <a class="brand" href="/admin"><img src="/icons/logo.svg" alt=""><div><div class="brand-name">Parsley</div><div class="brand-sub">Team time</div></div></a>
+        <button class="btn btn-ghost btn-icon" id="logout-m" aria-label="Sign out"></button>
+      </div>
+      <div id="banner"></div>
+      <div id="page"></div>
+    </main>
+    <nav class="mobile-nav" id="mnav"></nav>
+  </div>
+
+  <!-- Shift dialog -->
+  <dialog id="dlg-shift">
+    <form method="dialog" id="form-shift">
+      <h3 id="shift-title">Add shift</h3>
+      <div class="field"><label for="sh-emp">Employee</label><select class="input" id="sh-emp" required></select></div>
+      <div class="field"><label for="sh-date">Date</label><input class="input" type="date" id="sh-date" required></div>
+      <div class="row-3">
+        <div class="field"><label for="sh-in">Clock in</label><input class="input" type="time" id="sh-in" required></div>
+        <div class="field"><label for="sh-out">Clock out</label><input class="input" type="time" id="sh-out"></div>
+        <div class="field"><label for="sh-break">Break (min)</label><input class="input" type="number" min="0" step="5" id="sh-break" value="0"></div>
+      </div>
+      <div class="field"><label for="sh-note">Note</label><input class="input" id="sh-note" placeholder="e.g. forgot to clock out"></div>
+      <div class="err" id="sh-err"></div>
+      <div class="dlg-actions">
+        <button class="btn btn-danger hidden" type="button" id="sh-del">Delete</button>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn btn-primary" id="sh-save" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Employee dialog -->
+  <dialog id="dlg-emp">
+    <form method="dialog" id="form-emp">
+      <h3 id="emp-title">Add team member</h3>
+      <div class="field"><label for="em-name">Name</label><input class="input" id="em-name" required maxlength="40"></div>
+      <div class="row-2">
+        <div class="field"><label for="em-role">Role</label><input class="input" id="em-role" placeholder="Pastry chef" maxlength="40"></div>
+        <div class="field"><label for="em-rate">Hourly rate (NT$)</label><input class="input" type="number" min="0" step="1" id="em-rate" value="196"></div>
+      </div>
+      <div class="field"><label for="em-pin" id="em-pin-label">PIN (4–6 digits)</label><input class="input" id="em-pin" inputmode="numeric" pattern="\d{4,6}" maxlength="6" autocomplete="off"></div>
+      <label class="check hidden" id="em-active-wrap"><input type="checkbox" id="em-active"> Active (can clock in)</label>
+      <div class="err" id="em-err"></div>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn btn-primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/js/admin.js"></script>
+</body>
+</html>
