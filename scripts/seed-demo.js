@@ -34,4 +34,15 @@ for (const [i, [name, role, rate, start, len]] of team.entries()) {
     await db.run('INSERT INTO shifts(employee_id, clock_in, clock_out, break_min) VALUES(?,?,?,?)', [id, cin, Math.round(cin + (len + (rand() - 0.4) * 1.4) * 3600e3), len >= 9 ? 60 : 0]);
   }
 }
+// Start dates and some leave history for the balances view
+const starts = { Vera: '2021-09-01', Jhoann: '2024-03-15', Winnie: '2026-01-05', Tina: '2025-06-01' };
+for (const [name, start] of Object.entries(starts)) await db.run('UPDATE employees SET start_date = ? WHERE name = ?', [start, name]);
+await db.run("UPDATE employees SET daily_hours = 4, work_days = '1,2,3,4,5,6' WHERE name = 'Tina'");
+const leave = [['Vera', 'annual', '2026-09-28', '2026-10-02', 0, 'approved'], ['Vera', 'sick', '2026-03-10', '2026-03-10', 0, 'approved'],
+  ['Jhoann', 'annual', '2026-07-20', '2026-07-24', 0, 'approved'], ['Jhoann', 'annual', '2026-12-21', '2026-12-23', 0, 'pending'],
+  ['Jhoann', 'personal', '2026-05-06', '2026-05-06', 1, 'approved'], ['Tina', 'annual', '2026-08-10', '2026-08-11', 0, 'approved']];
+for (const [name, type, from, to, half, status] of leave) {
+  const { id } = await db.get('SELECT id FROM employees WHERE name = ?', [name]);
+  await db.run('INSERT INTO leave_requests(employee_id, type, start_date, end_date, half_day, status, created_at, decided_at, seen) VALUES(?,?,?,?,?,?,?,?,1)', [id, type, from, to, half, status, now, status === 'pending' ? null : now]);
+}
 console.log('Demo data added. Every demo PIN is 1234. Admin password: parsley');

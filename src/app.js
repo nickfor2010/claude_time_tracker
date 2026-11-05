@@ -1,6 +1,7 @@
 import { createVapidKeys, sendPush } from './push.js';
 import { computePay, DEFAULT_PAYROLL, workDaySet, weekday as wdOf } from './payroll.js';
 import { TW_HOLIDAYS } from './holidays-tw.js';
+import { leaveBalance } from './leave-balance.js';
 // Parsley Time — platform-independent API core.
 // Runs on Cloudflare Workers (D1) and on Node.js (node:sqlite) through a tiny async DB adapter:
 //   db.all(sql, params) -> rows, db.get(sql, params) -> row|null, db.run(sql, params) -> { lastId }, db.batch(sqls)
@@ -92,7 +93,7 @@ const weekday = (dateStr) => new Date(dateStr + 'T00:00:00Z').getUTCDay(); // 0 
 const workedMs = (s, now = Date.now()) => Math.max(0, (s.clock_out ?? now) - s.clock_in - (s.break_min || 0) * 60000);
 const publicEmployee = (e) => e && ({ id: e.id, name: e.name, role: e.role, color: e.color, hourly_rate: e.hourly_rate, leave_hours: e.leave_hours ?? 8,
   pay_type: e.pay_type || 'hourly', monthly_salary: e.monthly_salary || 0, daily_hours: e.daily_hours ?? 8, work_days: e.work_days ?? '1,2,3,4,5',
-  insurance: e.insurance || 0, active: !!e.active, created_at: e.created_at });
+  insurance: e.insurance || 0, start_date: e.start_date || null, active: !!e.active, created_at: e.created_at });
 // Share of normal pay for each leave type (Taiwan common practice; editable in Settings).
 const DEFAULT_LEAVE_PAY = { annual: 100, sick: 50, personal: 0, other: 0 };
 // Validated pay fields shared by "add" and "edit employee".
@@ -107,6 +108,7 @@ function payFields(b, cur = {}) {
     daily_hours: Math.min(24, nonNeg(pick('daily_hours', cur.daily_hours ?? 8), 8)) || 8,
     work_days: [...new Set(days)].sort().join(','),
     insurance: nonNeg(pick('insurance', cur.insurance || 0), 0),
+    start_date: (() => { const v = pick('start_date', cur.start_date ?? null); return isDate(v) ? v : null; })(),
   };
 }
 
@@ -143,7 +145,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     await db.batch(SCHEMA);
     // Migration for databases created before paid leave existed.
     for (const col of ['leave_hours REAL DEFAULT 8', "pay_type TEXT DEFAULT 'hourly'", 'monthly_salary REAL DEFAULT 0', 'daily_hours REAL DEFAULT 8',
-      "work_days TEXT DEFAULT '1,2,3,4,5'", 'insurance REAL DEFAULT 0']) {
+      "work_days TEXT DEFAULT '1,2,3,4,5'", 'insurance REAL DEFAULT 0', 'start_date TEXT']) {
       try { await db.run(`ALTER TABLE employees ADD COLUMN ${col}`); } catch { /* column already exists */ }
     }
     if (!(await getSetting('admin_hash'))) {
@@ -219,6 +221,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       todayShifts: shifts.filter((s) => dayKey(s.clock_in) === today).sort((a, b) => a.clock_in - b.clock_in),
       recent: recentPast,
       week, todayMs, monthMs, now, today, timezone: TZ, geo: (await getSetting('geo')) === '1',
+      balance: (await balancesFor([emp]))[0],
       leaveNotices: (await db.all("SELECT * FROM leave_requests WHERE employee_id = ? AND seen = 0 AND status IN ('approved', 'rejected') ORDER BY decided_at", [emp.id])).map(withDays),
     };
   }
@@ -364,6 +367,16 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
   async function holidayMap(from, to) {
     const rows = await db.all('SELECT * FROM holidays WHERE date >= ? AND date <= ? ORDER BY date', [from, to]);
     return new Map(rows.map((h) => [h.date, `${h.name_zh}${h.name_en ? ' ' + h.name_en : ''}`]));
+  }
+
+  async function balancesFor(employees) {
+    const today = dayKey(Date.now());
+    const ids = employees.map((e) => e.id);
+    if (!ids.length) return [];
+    const reqs = await db.all(`SELECT * FROM leave_requests WHERE employee_id IN (${ids.map(() => '?').join(',')}) AND status IN ('approved', 'pending') AND end_date >= ?`,
+      [...ids, addDays(today, -800)]);
+    const hol = new Set((await db.all('SELECT date FROM holidays WHERE date >= ?', [addDays(today, -800)])).map((h) => h.date));
+    return employees.map((e) => leaveBalance(e, reqs.filter((r) => r.employee_id === e.id), today, hol));
   }
 
   // ---------- payroll ----------
@@ -567,10 +580,10 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         if (!validPin(b.pin)) throw new HttpError(400, 'PIN must be 4–6 digits');
         const { n } = await db.get('SELECT COUNT(*) AS n FROM employees');
         const pf = payFields(b);
-        const { lastId } = await db.run(`INSERT INTO employees(name, role, pin_hash, color, hourly_rate, leave_hours, pay_type, monthly_salary, daily_hours, work_days, insurance, active, created_at)
-          VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        const { lastId } = await db.run(`INSERT INTO employees(name, role, pin_hash, color, hourly_rate, leave_hours, pay_type, monthly_salary, daily_hours, work_days, insurance, start_date, active, created_at)
+          VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
           [b.name.trim().slice(0, 40), String(b.role || '').trim().slice(0, 40), await hashSecret(b.pin), EMPLOYEE_COLORS[n % EMPLOYEE_COLORS.length], Number(b.hourly_rate) || 0, leaveHours(b.leave_hours, 8),
-            pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, Date.now()]);
+            pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, pf.start_date, Date.now()]);
         return json(201, publicEmployee(await db.get('SELECT * FROM employees WHERE id = ?', [lastId])));
       }
       let mm;
@@ -586,8 +599,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
           b.active !== undefined ? (b.active ? 1 : 0) : emp.active,
           b.pin ? await hashSecret(b.pin) : emp.pin_hash, emp.id]);
         const pf = payFields(b, emp);
-        await db.run('UPDATE employees SET pay_type = ?, monthly_salary = ?, daily_hours = ?, work_days = ?, insurance = ? WHERE id = ?',
-          [pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, emp.id]);
+        await db.run('UPDATE employees SET pay_type = ?, monthly_salary = ?, daily_hours = ?, work_days = ?, insurance = ?, start_date = ? WHERE id = ?',
+          [pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, pf.start_date, emp.id]);
         if (b.active === false) await db.run("DELETE FROM sessions WHERE kind = 'emp' AND employee_id = ?", [emp.id]);
         return json(200, publicEmployee(await db.get('SELECT * FROM employees WHERE id = ?', [emp.id])));
       }
@@ -644,6 +657,10 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         return json(200, { ok: true });
       }
 
+      if (p === '/api/admin/balances' && m === 'GET') {
+        const employees = await db.all('SELECT * FROM employees WHERE active = 1 ORDER BY name');
+        return json(200, { today: dayKey(Date.now()), balances: await balancesFor(employees) });
+      }
       if (p === '/api/admin/holidays' && m === 'GET') {
         const year = /^\d{4}$/.test(url.searchParams.get('year') || '') ? url.searchParams.get('year') : dayKey(Date.now()).slice(0, 4);
         return json(200, { year, holidays: await db.all('SELECT * FROM holidays WHERE date LIKE ? ORDER BY date', [`${year}-%`]) });

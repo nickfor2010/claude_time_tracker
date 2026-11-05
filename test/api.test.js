@@ -174,6 +174,18 @@ test('full punch flow', async () => {
   assert.equal((await admin('/api/admin/holidays?year=2026')).data.holidays.length, 16);
   assert.match((await admin('/api/admin/payroll.csv?month=2026-12')).data, /Holiday pay,Holiday work pay/);
 
+  // Leave balances: start date gives 特休 by seniority; approved annual days are used
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { start_date: '2023-06-01', work_days: '1,2,3,4,5', daily_hours: 8 } });
+  const vb = (await admin('/api/admin/balances')).data.balances.find((b) => b.employee_id === emp.id);
+  assert.equal(vb.start_date, '2023-06-01');
+  assert.equal(vb.annual.earned, 14);           // 3 years -> 14 days
+  assert.equal(vb.annual.used, 2);              // Dec 10–11 approved (Thu, Fri)
+  assert.equal(vb.annual.remaining, 12);
+  assert.equal(vb.sick.used, 0.5);
+  assert.equal((await phone('/api/me')).data.balance.annual.remaining, 12);
+  assert.equal((await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { start_date: 'nope' } })).data.start_date, null);
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { start_date: '2023-06-01' } });
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

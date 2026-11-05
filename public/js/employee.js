@@ -184,6 +184,20 @@ function renderLeave() {
     $('#leave-notice').innerHTML = '';
   }));
 
+  // My annual leave (特休) balance
+  const a = me.balance?.annual;
+  const box = $('#my-balance');
+  if (a?.status === 'active') {
+    const used = a.earned ? Math.min(100, (a.used / a.earned) * 100) : 0, pend = a.earned ? Math.min(100 - used, (a.pending / a.earned) * 100) : 0;
+    box.innerHTML = `<div class="bal-top"><span>${t('Annual leave (特休)')}</span><b>${t('{n} days left', { n: a.remaining })}</b></div>
+      <div class="bal-bar"><i style="width:${used}%"></i><i class="pend" style="width:${pend}%"></i></div>
+      <div class="s">${t('{used} used · {pending} pending · {earned} earned', { used: a.used, pending: a.pending, earned: a.earned })} · ${t('use by {date}', { date: dateLabel(a.to, { year: 'numeric', month: 'short', day: 'numeric' }) })}</div>`;
+    box.classList.remove('hidden');
+  } else if (a?.status === 'waiting' && a.next) {
+    box.innerHTML = `<div class="s">${t('You will earn {n} days of 特休 on {date}.', { n: a.next.days, date: dateLabel(a.next.date, { year: 'numeric', month: 'short', day: 'numeric' }) })}</div>`;
+    box.classList.remove('hidden');
+  } else box.classList.add('hidden');
+
   const visible = leave.filter((r) => r.status !== 'cancelled' || r.end_date >= me.today).slice(0, 8);
   $('#leave-list').innerHTML = visible.length ? visible.map((r) => `
     <div class="lv-row">
@@ -225,6 +239,9 @@ function openLeave() {
   let type = 'annual';
   const paintTypes = () => {
     $('#lv-type').innerHTML = LEAVE_TYPES.map((k) => `<button type="button" role="radio" aria-checked="${k === type}" data-type="${k}">${leaveLabel(k)}</button>`).join('');
+    const a = me.balance?.annual;
+    $('#lv-bal').classList.toggle('hidden', !(type === 'annual' && a?.status === 'active'));
+    if (type === 'annual' && a?.status === 'active') $('#lv-bal').textContent = t('You have {n} days of 特休 left (until {date}).', { n: a.remaining - a.pending, date: dateLabel(a.to, { month: 'short', day: 'numeric' }) });
   };
   paintTypes();
   $('#lv-type').onclick = (ev) => { const b = ev.target.closest('[data-type]'); if (b) { type = b.dataset.type; paintTypes(); } };

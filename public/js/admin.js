@@ -65,6 +65,7 @@ async function refresh() {
     state.data = await api('/api/admin/overview');
     if (state.page === 'timesheets') await loadShifts();
     if (state.page === 'timeoff') state.leave = (await api('/api/admin/leave')).requests;
+    if (state.page === 'timeoff' || state.page === 'team') state.balances = (await api('/api/admin/balances')).balances;
     if (state.page === 'payroll') state.payroll = await api(`/api/admin/payroll?month=${state.month}`);
   } catch (e) { if (e.status === 401) return boot(); toast(e.message, true); }
   render();
@@ -351,6 +352,8 @@ function renderTimeoff() {
           <button class="btn btn-approve" data-decide="approved" data-id="${r.id}">${icons.check} ${t('Approve')}</button>
         </div>
       </div>`).join('') : `<div class="card empty" style="grid-column:1/-1">${t('No requests waiting. 🎉')}</div>`}</div>
+    <div class="section-title" style="margin-top:28px">${t('Leave balances')}</div>
+    ${balanceTable(state.balances || [])}
     <div class="section-title" style="margin-top:28px">${t('Coming up')}</div>
     ${leaveTable(upcoming, t('No approved time off coming up.'))}
     <div class="section-title" style="margin-top:28px">${t('History')}</div>
@@ -365,7 +368,45 @@ function renderTimeoff() {
       refresh();
     } catch (e) { toast(e.message, true); b.disabled = false; }
   }));
+  $('#page').querySelectorAll('[data-setstart]').forEach((b) => (b.onclick = () => openEmp(d.employees.find((e) => e.id === Number(b.dataset.setstart)), { focus: 'em-start' })));
   renderAdminNotif();
+}
+// Seniority like "3 y 5 m" from a start date to today
+function seniority(start, today) {
+  if (!start || start > today) return '';
+  const [y1, m1, d1] = start.split('-').map(Number), [y2, m2, d2] = today.split('-').map(Number);
+  let months = (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0);
+  const y = Math.floor(months / 12), m = months % 12;
+  return t('{y} y {m} m', { y, m });
+}
+const d1 = (x) => (Math.round(x * 10) / 10).toLocaleString();
+function annualBar(a) {
+  const pctUsed = a.earned ? Math.min(100, (a.used / a.earned) * 100) : 0;
+  const pctPend = a.earned ? Math.min(100 - pctUsed, (a.pending / a.earned) * 100) : 0;
+  return `<div class="bal-bar" role="img" aria-label="${t('{used} of {earned} days used', { used: d1(a.used), earned: d1(a.earned) })}"><i style="width:${pctUsed}%"></i><i class="pend" style="width:${pctPend}%"></i></div>`;
+}
+function balanceTable(rows) {
+  const today = state.data.today;
+  if (!rows.length) return `<div class="card empty">${t('No team members yet.')}</div>`;
+  return `<div class="card panel" style="padding:6px"><div class="table-wrap"><table class="tbl bal-table">
+    <thead><tr><th>${t('Employee')}</th><th>${t('Seniority')}</th><th>${t('Annual leave (特休)')}</th><th class="num">${t('Left')}</th><th>${t('Use by')}</th><th>${t('Next grant')}</th><th class="num">${t('Sick')}</th><th class="num">${t('Personal')}</th></tr></thead>
+    <tbody>${rows.map((b) => {
+      const a = b.annual || {};
+      const active = a.status === 'active';
+      const soon = active && a.remaining > 0 && Date.parse(a.to) - Date.parse(today) < 60 * 86400e3;
+      return `<tr>
+        <td><span class="emp">${avatar(b)}<span>${esc(b.name)}${b.ratio < 1 ? `<span class="sub">${t('part-time {pct}%', { pct: Math.round(b.ratio * 100) })}</span>` : ''}</span></span></td>
+        <td>${b.start_date ? `${seniority(b.start_date, today)}<span class="sub">${t('since {date}', { date: dateLabel(b.start_date, { year: 'numeric', month: 'short', day: 'numeric' }) })}</span>` : `<button class="btn btn-ghost btn-sm" data-setstart="${b.employee_id}">${t('Set start date')}</button>`}</td>
+        <td style="min-width:170px">${active ? `${annualBar(a)}<span class="sub">${t('{used} used · {pending} pending · {earned} earned', { used: d1(a.used), pending: d1(a.pending), earned: d1(a.earned) })}</span>`
+          : a.status === 'waiting' ? `<span class="muted">${t('Earns {n} days on {date}', { n: d1(a.next.days), date: dateLabel(a.next.date) })}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="num">${active ? `<b style="font-size:16px">${d1(a.remaining)}</b> <span class="muted">${t('days')}</span>` : '—'}</td>
+        <td>${active ? `<span ${soon ? 'style="color:var(--clay);font-weight:600"' : ''}>${dateLabel(a.to, { year: 'numeric', month: 'short', day: 'numeric' })}</span>${soon ? `<span class="sub" style="color:var(--clay)">${t('Unused days must be paid or carried over')}</span>` : ''}` : '—'}</td>
+        <td>${a.next ? `${t('+{n} days', { n: d1(a.next.days) })}<span class="sub">${dateLabel(a.next.date, { year: 'numeric', month: 'short', day: 'numeric' })}</span>` : '—'}</td>
+        <td class="num">${d1(b.sick.used)}<span class="sub">/ ${b.sick.limit}</span></td>
+        <td class="num">${d1(b.personal.used)}<span class="sub">/ ${b.personal.limit}</span></td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>
+    <p class="muted" style="font-size:12.5px;margin-top:10px">${t('特休 follows the Labor Standards Act art. 38 by seniority (6 months: 3 days, 1 year: 7, 2: 10, 3: 14, 5: 15, then +1 per year from 10 up to 30), per anniversary year. Part-time staff get a share by weekly hours (40 h = 100%). Sick and personal leave count this calendar year against the legal limits.')}</p>`;
 }
 function leaveTable(rows, empty) {
   if (!rows.length) return `<div class="card empty">${empty}</div>`;
@@ -542,12 +583,15 @@ function renderTeam() {
         <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${e.pay_type === 'monthly' ? `${money(e.monthly_salary)}/${t('month')}` : `${money(e.hourly_rate)}/${t('h')}`} · ${workDaysLabel(e.work_days)}${e.active ? '' : ' · ' + t('inactive')}</div></div>
           <button class="btn btn-ghost btn-icon btn-sm" style="margin-left:auto" data-emp="${e.id}" aria-label="${t('Edit {name}', { name: esc(e.name) })}">${icons.edit}</button></div>
         <div class="member-stats"><div><div class="k">${t('Today')}</div><div class="v">${hours(e.todayMs)}h</div></div><div><div class="k">${t('Week')}</div><div class="v">${hours(e.weekMs)}h</div></div><div><div class="k">${t('Month')}</div><div class="v">${hours(e.monthMs)}h</div></div></div>
+        ${(() => { const b = (state.balances || []).find((x) => x.employee_id === e.id); const a = b?.annual;
+          return a?.status === 'active' ? `<div class="bal-mini">${annualBar(a)}<span>${t('特休 {left} of {earned} days left · until {date}', { left: d1(a.remaining), earned: d1(a.earned), date: dateLabel(a.to, { month: 'short', day: 'numeric' }) })}</span></div>`
+            : e.active && !e.start_date ? `<span class="muted" style="font-size:12.5px">${t('Add a start date to track 特休')}</span>` : ''; })()}
         ${e.onShift ? `<span class="pill pill-live" style="justify-self:start"><span class="dot"></span>${t('On shift now')}</span>` : ''}
       </div>`).join('') : `<div class="card empty" style="grid-column:1/-1">${t("No team members yet. Add your first one — they'll appear on the time clock right away.")}</div>`}</div>`;
   $('#tm-add').onclick = () => openEmp();
   $('#page').querySelectorAll('[data-emp]').forEach((b) => (b.onclick = () => openEmp(d.employees.find((e) => e.id === Number(b.dataset.emp)))));
 }
-function openEmp(e) {
+function openEmp(e, { focus } = {}) {
   const dlg = $('#dlg-emp');
   $('#emp-title').textContent = e ? t('Edit {name}', { name: e.name }) : t('Add team member');
   $('#em-name').value = e?.name || '';
@@ -555,6 +599,7 @@ function openEmp(e) {
   $('#em-rate').value = e ? e.hourly_rate : 196;
   $('#em-leave').value = e ? (e.leave_hours ?? 8) : 8;
   $('#em-salary').value = e ? e.monthly_salary || '' : '';
+  $('#em-start').value = e?.start_date || '';
   $('#em-daily').value = e ? (e.daily_hours ?? 8) : 8;
   $('#em-ins').value = e ? e.insurance || 0 : 0;
   let payType = e?.pay_type || 'hourly';
@@ -578,7 +623,7 @@ function openEmp(e) {
     if (ev.submitter?.value !== 'save') return;
     ev.preventDefault();
     const body = { name: $('#em-name').value, role: $('#em-role').value, hourly_rate: Number($('#em-rate').value) || 0, leave_hours: Number($('#em-leave').value), pin: $('#em-pin').value,
-      pay_type: payType, monthly_salary: Number($('#em-salary').value) || 0, daily_hours: Number($('#em-daily').value) || 8, insurance: Number($('#em-ins').value) || 0,
+      start_date: $('#em-start').value, pay_type: payType, monthly_salary: Number($('#em-salary').value) || 0, daily_hours: Number($('#em-daily').value) || 8, insurance: Number($('#em-ins').value) || 0,
       work_days: [...$('#em-days').querySelectorAll('input:checked')].map((i) => i.value).join(',') };
     if (e) body.active = $('#em-active').checked;
     try {
@@ -587,6 +632,7 @@ function openEmp(e) {
     } catch (err) { $('#em-err').textContent = err.message; }
   };
   dlg.showModal();
+  if (focus) $('#' + focus).focus();
 }
 
 // ---------- settings ----------

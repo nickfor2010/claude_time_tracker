@@ -74,6 +74,7 @@
       <div class="section-title" data-i18n>Today</div>
       <div class="card timeline" id="today"></div>
       <div class="section-title section-row" id="timeoff"><span data-i18n>Time off</span><button class="btn btn-primary btn-sm" id="leave-new"></button></div>
+      <div class="card bal-card hidden" id="my-balance"></div>
       <div class="card timeline" id="leave-list"></div>
       <div class="card notif-card hidden" id="notif-card"></div>
       <div id="payslip-block" class="hidden">
@@ -96,6 +97,7 @@
         <div class="field"><label for="lv-start" data-i18n>From</label><input class="input" type="date" id="lv-start" required></div>
         <div class="field"><label for="lv-end" data-i18n>To</label><input class="input" type="date" id="lv-end" required></div>
       </div>
+      <p class="muted hidden" id="lv-bal" style="margin:-4px 0 0;font-size:13.5px"></p>
       <label class="check hidden" id="lv-half-wrap"><input type="checkbox" id="lv-half"> <span data-i18n>Half day only</span></label>
       <div class="field"><label for="lv-note" data-i18n>Reason (optional)</label><textarea class="input" id="lv-note" rows="2" maxlength="300"></textarea></div>
       <div class="err" id="lv-err"></div>
