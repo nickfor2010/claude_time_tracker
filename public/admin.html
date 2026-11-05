@@ -100,6 +100,19 @@
         <div class="field"><label for="em-ins" data-i18n>Insurance deduction / month (NT$)</label><input class="input" type="number" min="0" step="1" id="em-ins" value="0"></div>
       </div>
       <div class="field"><label for="em-pin" id="em-pin-label">PIN (4–6 digits)</label><input class="input" id="em-pin" inputmode="numeric" pattern="\d{4,6}" maxlength="6" autocomplete="off"></div>
+      <details class="personal" id="em-personal">
+        <summary data-i18n>Personal details</summary>
+        <div class="row-2">
+          <div class="field"><label for="em-bday" data-i18n>Birthday</label><input class="input" type="date" id="em-bday"></div>
+          <div class="field"><label for="em-phone" data-i18n>Phone</label><input class="input" type="tel" id="em-phone" maxlength="25" autocomplete="off"></div>
+        </div>
+        <div class="field"><label for="em-email" data-i18n>Email</label><input class="input" type="email" id="em-email" maxlength="120" autocomplete="off"></div>
+        <div class="row-3">
+          <div class="field"><label for="em-ec-name" data-i18n>Emergency contact</label><input class="input" id="em-ec-name" maxlength="60"></div>
+          <div class="field"><label for="em-ec-rel" data-i18n>Relationship</label><input class="input" id="em-ec-rel" maxlength="60" placeholder="母親 / Mother" data-i18n-placeholder="e.g. mother"></div>
+          <div class="field"><label for="em-ec-phone" data-i18n>Emergency phone</label><input class="input" type="tel" id="em-ec-phone" maxlength="25"></div>
+        </div>
+      </details>
       <div class="comp-box">
         <label class="check"><input type="checkbox" id="em-comp"> <span data-i18n>Convert overtime into 補休 (comp time)</span></label>
         <p class="muted" id="em-comp-status" style="margin:2px 0 0 28px;font-size:12.5px"></p>
@@ -137,6 +150,17 @@
     </form>
   </dialog>
 
+  <!-- Install QR dialog -->
+  <dialog id="dlg-qr">
+    <div class="qr-dlg">
+      <h3 data-i18n>Install the app</h3>
+      <p class="muted" style="margin:0;font-size:13.5px" data-i18n>Staff scan this with their phone camera, then add the app to their Home Screen.</p>
+      <div class="qr-box" id="qr-box"></div>
+      <div class="qr-url"><span id="qr-url"></span><button class="btn btn-ghost btn-sm" type="button" id="qr-copy" data-i18n>Copy link</button></div>
+      <div class="dlg-actions"><a class="btn btn-primary" href="/poster" target="_blank" rel="noopener" data-i18n>Print poster</a><span class="spacer"></span><button class="btn btn-ghost" type="button" id="qr-close" data-i18n>Close</button></div>
+    </div>
+  </dialog>
+
   <!-- Leave balance dialog -->
   <dialog id="dlg-bal">
     <div class="bal-dlg">
@@ -146,6 +170,7 @@
     </div>
   </dialog>
 
+  <script src="/js/vendor/qrcode.js"></script>
   <script type="module" src="/js/admin.js"></script>
 </body>
 </html>

@@ -80,6 +80,18 @@ Go to Timesheets → **History & import**.
 
 Statutory holidays 2020–2027 are built in, so past holidays are skipped automatically.
 
+## Staff details, install QR code and PINs
+
+- **Personal details.** Birthday, phone, email and an emergency contact (name, relationship, phone) are set in Team → edit → Personal details.
+  - Team cards show them with tap-to-call and tap-to-email links.
+  - Upcoming birthdays (next 14 days) appear on the Overview.
+  - Staff can view and update their own details in the app (tap their name). Only they and the manager can see them.
+- **Install QR code.** Team → **Install QR code** shows a QR code for the app and a printable bilingual A4 poster (`/poster`). The code is generated in the browser by a bundled copy of `qrcode-generator` (MIT, `public/js/vendor/qrcode.js`), so no outside service is involved.
+- **Change PIN.** Staff tap their name → **Change PIN**. They enter the current PIN and the new one twice.
+  - Very easy PINs (1111, 1234…) are refused.
+  - The person's other phones are signed out.
+  - The manager can still set a new PIN in Team if someone forgets theirs.
+
 ## Languages (English / 繁體中文)
 
 Every screen comes in English and Traditional Chinese (Taiwan). A phone set to Chinese opens in Chinese automatically, and the **中文 / EN** button switches language at any time. Each phone or computer remembers its own choice. The CSV export follows the dashboard language. All texts live in `public/js/i18n.js`.

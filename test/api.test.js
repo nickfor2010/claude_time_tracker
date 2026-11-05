@@ -275,6 +275,28 @@ test('full punch flow', async () => {
   // nothing expired yet -> nothing to pay out
   assert.equal((await admin(`/api/admin/comp/${emp.id}/payout`, { method: 'POST', body: {} })).status, 400);
 
+  // Personal details: admin sets them, the employee can update their own; bad values are refused
+  assert.equal((await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { email: 'not-an-email' } })).status, 400);
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { birthday: '1990-11-12', email: 'vera@example.com', phone: '0912 345 678', emergency_name: 'Mom', emergency_relation: '母親', emergency_phone: '+886 2 1234 5678' } });
+  let mine = (await phone('/api/me')).data.employee;
+  assert.deepEqual([mine.birthday, mine.phone, mine.emergency_relation], ['1990-11-12', '0912 345 678', '母親']);
+  assert.equal((await phone('/api/me/profile', { method: 'PATCH', body: { phone: 'call me' } })).status, 400);
+  assert.equal((await phone('/api/me/profile', { method: 'PATCH', body: { phone: '0987-654-321' } })).status, 200);
+  mine = (await phone('/api/me')).data.employee;
+  assert.deepEqual([mine.phone, mine.email], ['0987-654-321', 'vera@example.com']); // other fields untouched
+  assert.equal((await client()('/api/me/profile', { method: 'PATCH', body: { phone: '0900000000' } })).status, 401);
+  // Change PIN: needs the current PIN, refuses easy PINs, signs out the person's other phones
+  const phone2 = client();
+  await phone2('/api/login', { method: 'POST', body: { employeeId: emp.id, pin: '4321' } });
+  assert.equal((await phone('/api/me/pin', { method: 'POST', body: { current: '0000', pin: '5826' } })).status, 400);
+  assert.equal((await phone('/api/me/pin', { method: 'POST', body: { current: '4321', pin: '1111' } })).status, 400);
+  assert.equal((await phone('/api/me/pin', { method: 'POST', body: { current: '4321', pin: '1234' } })).status, 400);
+  assert.equal((await phone('/api/me/pin', { method: 'POST', body: { current: '4321', pin: '5826' } })).status, 200);
+  assert.equal((await phone('/api/me')).status, 200);   // this phone stays signed in
+  assert.equal((await phone2('/api/me')).status, 401);  // the other phone is signed out
+  assert.equal((await phone2('/api/login', { method: 'POST', body: { employeeId: emp.id, pin: '4321' } })).status, 401);
+  assert.equal((await phone2('/api/login', { method: 'POST', body: { employeeId: emp.id, pin: '5826' } })).status, 200);
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

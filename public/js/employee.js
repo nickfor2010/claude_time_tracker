@@ -123,11 +123,7 @@ function renderPunch() {
   const e = me.employee;
   $('#top-right').innerHTML = `<button class="btn btn-ghost btn-sm" id="signout" title="${t('Sign out')}">${avatar(e, '')}<span>${esc(e.name.split(' ')[0])}</span></button>`;
   $('#top-right .avatar').style.cssText += ';width:26px;height:26px;font-size:10px';
-  $('#signout').onclick = async () => {
-    if (!confirm(t('Sign out {name} from this phone?', { name: e.name }))) return;
-    await api('/api/logout', { method: 'POST' });
-    showTeam();
-  };
+  $('#signout').onclick = openAccount;
 
   // Week bars
   const max = Math.max(TARGET_MS, ...me.week.map((d) => d.ms));
@@ -169,6 +165,42 @@ function renderPayslips() {
 }
 
 // ---------- time off ----------
+// ---------- my account: details, PIN, sign out ----------
+function openAccount() {
+  const e = me.employee;
+  $('#me-title').textContent = e.name;
+  $('#me-bday').value = e.birthday || ''; $('#me-phone').value = e.phone || ''; $('#me-email').value = e.email || '';
+  $('#me-ec-name').value = e.emergency_name || ''; $('#me-ec-rel').value = e.emergency_relation || ''; $('#me-ec-phone').value = e.emergency_phone || '';
+  ['pin-cur', 'pin-new', 'pin-new2'].forEach((id) => ($('#' + id).value = ''));
+  $('#pin-err').textContent = ''; $('#me-err').textContent = '';
+  $('#form-me').onsubmit = async (ev) => {
+    ev.preventDefault();
+    try {
+      await api('/api/me/profile', { method: 'PATCH', body: { birthday: $('#me-bday').value, phone: $('#me-phone').value, email: $('#me-email').value,
+        emergency_name: $('#me-ec-name').value, emergency_relation: $('#me-ec-rel').value, emergency_phone: $('#me-ec-phone').value } });
+      toast(t('Saved')); await loadMe();
+    } catch (err) { $('#me-err').textContent = err.message; }
+  };
+  $('#form-pin').onsubmit = async (ev) => {
+    ev.preventDefault();
+    $('#pin-err').textContent = '';
+    if ($('#pin-new').value !== $('#pin-new2').value) { $('#pin-err').textContent = t('The two new PINs are not the same'); return; }
+    try {
+      await api('/api/me/pin', { method: 'POST', body: { current: $('#pin-cur').value, pin: $('#pin-new').value } });
+      ['pin-cur', 'pin-new', 'pin-new2'].forEach((id) => ($('#' + id).value = ''));
+      toast(t('PIN changed'));
+    } catch (err) { $('#pin-err').textContent = err.message; }
+  };
+  $('#me-signout').onclick = async () => {
+    if (!confirm(t('Sign out {name} from this phone?', { name: e.name }))) return;
+    await api('/api/logout', { method: 'POST' });
+    $('#dlg-me').close();
+    showTeam();
+  };
+  $('#me-close').onclick = () => $('#dlg-me').close();
+  $('#dlg-me').showModal();
+}
+
 // ---------- 補休 (comp time) ----------
 function renderComp() {
   const c = me.comp || { status: 'off' };

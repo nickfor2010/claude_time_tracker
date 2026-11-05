@@ -102,9 +102,32 @@ const weekday = (dateStr) => new Date(dateStr + 'T00:00:00Z').getUTCDay(); // 0 
 const workedMs = (s, now = Date.now()) => Math.max(0, (s.clock_out ?? now) - s.clock_in - (s.break_min || 0) * 60000);
 const publicEmployee = (e) => e && ({ id: e.id, name: e.name, role: e.role, color: e.color, hourly_rate: e.hourly_rate, leave_hours: e.leave_hours ?? 8,
   pay_type: e.pay_type || 'hourly', monthly_salary: e.monthly_salary || 0, daily_hours: e.daily_hours ?? 8, work_days: e.work_days ?? '1,2,3,4,5',
-  insurance: e.insurance || 0, start_date: e.start_date || null, comp_status: e.comp_status || 'off', comp_updated: e.comp_updated || null, leave_system: e.leave_system === 'calendar' ? 'calendar' : 'anniversary', active: !!e.active, created_at: e.created_at });
+  insurance: e.insurance || 0, start_date: e.start_date || null,
+  birthday: e.birthday || null, email: e.email || '', phone: e.phone || '', emergency_name: e.emergency_name || '', emergency_relation: e.emergency_relation || '',
+  emergency_phone: e.emergency_phone || '', pin_changed: e.pin_changed || null, comp_status: e.comp_status || 'off', comp_updated: e.comp_updated || null, leave_system: e.leave_system === 'calendar' ? 'calendar' : 'anniversary', active: !!e.active, created_at: e.created_at });
 // Share of normal pay for each leave type (Taiwan common practice; editable in Settings).
 const DEFAULT_LEAVE_PAY = { annual: 100, sick: 50, personal: 0, other: 0 };
+// Personal details (admin and the employee themself can edit). Only fields present in the body change.
+const PROFILE_FIELDS = ['birthday', 'email', 'phone', 'emergency_name', 'emergency_relation', 'emergency_phone'];
+function profileFields(b, cur = {}) {
+  const out = {};
+  for (const k of PROFILE_FIELDS) {
+    const v = b[k] !== undefined ? String(b[k] ?? '').trim() : cur[k] ?? '';
+    if (k === 'birthday') {
+      if (v && !isDate(v)) throw new HttpError(400, 'Birthday must be a date');
+      out[k] = v || null;
+    } else if (k === 'email') {
+      if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new HttpError(400, 'Email address looks wrong');
+      out[k] = v.slice(0, 120);
+    } else if (k.endsWith('phone')) {
+      if (v && !/^[+()\-\d\s#]{6,25}$/.test(v)) throw new HttpError(400, 'Phone number looks wrong');
+      out[k] = v;
+    } else out[k] = v.slice(0, 60);
+  }
+  return out;
+}
+const saveProfile = (db, id, pf) => db.run(`UPDATE employees SET ${PROFILE_FIELDS.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, [...PROFILE_FIELDS.map((k) => pf[k]), id]);
+
 // Validated pay fields shared by "add" and "edit employee".
 function payFields(b, cur = {}) {
   const pick = (k, fallback) => (b[k] !== undefined ? b[k] : fallback);
@@ -158,7 +181,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       "work_days TEXT DEFAULT '1,2,3,4,5'", 'insurance REAL DEFAULT 0', 'start_date TEXT', "leave_system TEXT DEFAULT 'anniversary'"]) {
       try { await db.run(`ALTER TABLE employees ADD COLUMN ${col}`); } catch { /* column already exists */ }
     }
-    for (const col of ["comp_status TEXT DEFAULT 'off'", 'comp_updated INTEGER']) {
+    for (const col of ["comp_status TEXT DEFAULT 'off'", 'comp_updated INTEGER', 'birthday TEXT', 'email TEXT', 'phone TEXT',
+      'emergency_name TEXT', 'emergency_relation TEXT', 'emergency_phone TEXT', 'pin_changed INTEGER']) {
       try { await db.run(`ALTER TABLE employees ADD COLUMN ${col}`); } catch { /* exists */ }
     }
     try { await db.run('ALTER TABLE leave_requests ADD COLUMN hours REAL'); } catch { /* exists */ }
@@ -565,7 +589,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
 
     // Employee
     if (p === '/api/logout' && m === 'POST') return json(200, { ok: true }, { 'Set-Cookie': await clearSession(req, 'emp') });
-    if (p === '/api/me' || p === '/api/punch' || p.startsWith('/api/leave') || p.startsWith('/api/payslips') || p.startsWith('/api/comp/') || (p.startsWith('/api/push/') && p !== '/api/push/key')) {
+    if (p === '/api/me' || p === '/api/punch' || p.startsWith('/api/leave') || p.startsWith('/api/payslips') || p.startsWith('/api/comp/') || p.startsWith('/api/me/') || (p.startsWith('/api/push/') && p !== '/api/push/key')) {
       if (p.startsWith('/api/push/') && new URL(req.url).searchParams.get('role') === 'admin') return pushRoutes(req, p, m, 'admin', null);
       const s = await getSession(req, 'emp');
       const emp = s && await db.get('SELECT * FROM employees WHERE id = ? AND active = 1', [s.employee_id]);
@@ -581,6 +605,23 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       }
       if (p.startsWith('/api/push/')) return pushRoutes(req, p, m, 'emp', emp.id);
 
+      if (p === '/api/me/profile' && m === 'PATCH') {
+        const b = await readBody(req);
+        await saveProfile(db, emp.id, profileFields(b, emp));
+        return json(200, { ok: true });
+      }
+      if (p === '/api/me/pin' && m === 'POST') {
+        if (await rateLimited(ip)) throw new HttpError(429, 'Too many attempts. Try again in 15 minutes.');
+        const { current, pin } = await readBody(req);
+        if (!(await verifySecret(String(current ?? ''), emp.pin_hash))) throw new HttpError(400, 'Current PIN is wrong');
+        if (!validPin(pin)) throw new HttpError(400, 'PIN must be 4–6 digits');
+        if (/^(\d)\1+$/.test(pin) || '0123456789012345'.includes(pin) || '9876543210987654'.includes(pin)) throw new HttpError(400, 'Choose a PIN that is harder to guess');
+        await db.run('UPDATE employees SET pin_hash = ?, pin_changed = ? WHERE id = ?', [await hashSecret(pin), Date.now(), emp.id]);
+        // sign out other phones of this person; keep this one
+        const token = parseCookies(req).emp_session;
+        await db.run("DELETE FROM sessions WHERE kind = 'emp' AND employee_id = ? AND token != ?", [emp.id, token || '']);
+        return json(200, { ok: true });
+      }
       if (p === '/api/comp/consent' && m === 'POST') {
         const { agree } = await readBody(req);
         if (emp.comp_status !== 'proposed') throw new HttpError(400, 'There is no proposal to answer');
@@ -671,11 +712,13 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         if (!validPin(b.pin)) throw new HttpError(400, 'PIN must be 4–6 digits');
         const { n } = await db.get('SELECT COUNT(*) AS n FROM employees');
         const pf = payFields(b);
+        const prof = profileFields(b);
         const { lastId } = await db.run(`INSERT INTO employees(name, role, pin_hash, color, hourly_rate, leave_hours, pay_type, monthly_salary, daily_hours, work_days, insurance, start_date, active, created_at)
           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
           [b.name.trim().slice(0, 40), String(b.role || '').trim().slice(0, 40), await hashSecret(b.pin), EMPLOYEE_COLORS[n % EMPLOYEE_COLORS.length], Number(b.hourly_rate) || 0, leaveHours(b.leave_hours, 8),
             pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, pf.start_date, Date.now()]);
         await db.run('UPDATE employees SET leave_system = ? WHERE id = ?', [pf.leave_system, lastId]);
+        await saveProfile(db, lastId, prof);
         return json(201, publicEmployee(await db.get('SELECT * FROM employees WHERE id = ?', [lastId])));
       }
       let mm;
@@ -691,6 +734,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
           b.active !== undefined ? (b.active ? 1 : 0) : emp.active,
           b.pin ? await hashSecret(b.pin) : emp.pin_hash, emp.id]);
         const pf = payFields(b, emp);
+        await saveProfile(db, emp.id, profileFields(b, emp));
         await db.run('UPDATE employees SET pay_type = ?, monthly_salary = ?, daily_hours = ?, work_days = ?, insurance = ?, start_date = ?, leave_system = ? WHERE id = ?',
           [pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, pf.start_date, pf.leave_system, emp.id]);
         if (b.comp_time !== undefined) {

@@ -472,3 +472,24 @@ input[type="file"].input { padding: 8px; }
 .bal-table td .sub { white-space: normal; }
 .bal-table [data-comppay] { display: block; margin-top: 4px; white-space: nowrap; }
 .bal-table td:nth-child(3) { min-width: 200px; }
+
+/* personal details, contact lines, QR */
+details.personal { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+details.personal summary { cursor: pointer; font-weight: 700; font-size: 14px; }
+details.personal[open] summary { margin-bottom: 10px; }
+details.personal .field { margin-bottom: 10px; }
+.contact { display: grid; gap: 3px; font-size: 12.5px; }
+.contact a, .contact span { color: var(--ink-2); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact a:hover { color: var(--primary); }
+.contact svg { width: 14px; height: 14px; flex: none; }
+.contact .ec { color: var(--clay); }
+.bday { display: inline-block; margin-left: 6px; font-weight: 600; color: var(--orange-700); }
+.qr-dlg { display: grid; gap: 12px; padding: 22px; }
+.qr-box { width: min(280px, 70vw); margin: 0 auto; background: #fff; border-radius: 14px; padding: 10px; box-shadow: inset 0 0 0 2px var(--line); }
+.qr-box svg { width: 100%; height: auto; display: block; }
+.qr-url { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); word-break: break-all; }
+
+.me-dlg { display: grid; gap: 14px; padding: 22px; }
+.me-sec { display: grid; gap: 10px; padding: 0 !important; border-top: 1px solid var(--line); padding-top: 12px !important; }
+.me-sec h4 { margin: 0; font-size: 15px; }
+#dlg-me .row-3 { grid-template-columns: 1fr 1fr 1fr; }

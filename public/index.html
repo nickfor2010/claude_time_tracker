@@ -89,6 +89,45 @@
 
     <footer class="foot">Parsley 帕斯里 · <span data-i18n>Italian passion</span> · <a href="/admin" data-i18n>Manager</a></footer>
   </main>
+  <!-- My account -->
+  <dialog id="dlg-me">
+    <div class="me-dlg">
+      <h3 id="me-title"></h3>
+      <form class="me-sec" id="form-pin">
+        <h4 data-i18n>Change PIN</h4>
+        <div class="row-3">
+          <div class="field"><label for="pin-cur" data-i18n>Current PIN</label><input class="input" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" id="pin-cur" autocomplete="current-password" required></div>
+          <div class="field"><label for="pin-new" data-i18n>New PIN</label><input class="input" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" id="pin-new" autocomplete="new-password" required></div>
+          <div class="field"><label for="pin-new2" data-i18n>Repeat</label><input class="input" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" id="pin-new2" autocomplete="new-password" required></div>
+        </div>
+        <p class="muted" style="margin:0;font-size:12.5px" data-i18n>4–6 digits. Avoid 1234 or repeated numbers. Your other phones will be signed out.</p>
+        <div class="err" id="pin-err"></div>
+        <button class="btn btn-primary btn-sm" style="justify-self:start" data-i18n>Change PIN</button>
+      </form>
+      <form class="me-sec" id="form-me">
+        <h4 data-i18n>My details</h4>
+        <div class="row-2">
+          <div class="field"><label for="me-bday" data-i18n>Birthday</label><input class="input" type="date" id="me-bday"></div>
+          <div class="field"><label for="me-phone" data-i18n>Phone</label><input class="input" type="tel" id="me-phone" maxlength="25"></div>
+        </div>
+        <div class="field"><label for="me-email" data-i18n>Email</label><input class="input" type="email" id="me-email" maxlength="120"></div>
+        <div class="row-2">
+          <div class="field"><label for="me-ec-name" data-i18n>Emergency contact</label><input class="input" id="me-ec-name" maxlength="60"></div>
+          <div class="field"><label for="me-ec-rel" data-i18n>Relationship</label><input class="input" id="me-ec-rel" maxlength="60"></div>
+        </div>
+        <div class="field"><label for="me-ec-phone" data-i18n>Emergency phone</label><input class="input" type="tel" id="me-ec-phone" maxlength="25"></div>
+        <p class="muted" style="margin:0;font-size:12.5px" data-i18n>Only you and your manager can see these.</p>
+        <div class="err" id="me-err"></div>
+        <button class="btn btn-primary btn-sm" style="justify-self:start" data-i18n>Save</button>
+      </form>
+      <div class="dlg-actions">
+        <button class="btn btn-danger" type="button" id="me-signout" data-i18n>Sign out</button>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" type="button" id="me-close" data-i18n>Close</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Time-off request -->
   <dialog id="dlg-leave">
     <form method="dialog" id="form-leave">

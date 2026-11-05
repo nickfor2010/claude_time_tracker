@@ -119,7 +119,7 @@ function renderOverview() {
   const active = d.employees.filter((e) => e.active);
   $('#page').innerHTML = `
     <div class="page-head">
-      <div><h1>${t('{greet}, Chef', { greet: greeting() })}</h1><p>${t("Here's how the team is doing today.")}${holidayLine(d)}</p></div>
+      <div><h1>${t('{greet}, Chef', { greet: greeting() })}</h1><p>${t("Here's how the team is doing today.")}${holidayLine(d)}${upcomingBirthdays(d.employees, d.today).map((b) => ` <span class="bday">🎂 ${b.days === 0 ? t("{name}'s birthday is today!", { name: esc(b.e.name) }) : t('{name} · {date}', { name: esc(b.e.name), date: dateLabel(b.next, { month: 'short', day: 'numeric' }) })}</span>`).join('')}</p></div>
       <div class="toolbar"><button class="btn btn-ghost" data-goto="timesheets">${icons.sheet} ${t('Timesheets')}</button><button class="btn btn-primary" id="ov-add">${icons.plus} ${t('Add shift')}</button></div>
     </div>
     <div class="kpis">
@@ -815,13 +815,42 @@ function renderHistory() {
   $('#im-break').onchange = reparse;
 }
 
+// ---------- personal details & install QR ----------
+function contactLines(e) {
+  const bits = [];
+  if (e.phone) bits.push(`<a href="tel:${esc(e.phone.replace(/[^+\d]/g, ''))}">${icons.phone} ${esc(e.phone)}</a>`);
+  if (e.email) bits.push(`<a href="mailto:${esc(e.email)}">${icons.mail} ${esc(e.email)}</a>`);
+  if (e.birthday) bits.push(`<span>🎂 ${dateLabel(e.birthday, { month: 'long', day: 'numeric' })}</span>`);
+  if (e.emergency_phone) bits.push(`<a href="tel:${esc(e.emergency_phone.replace(/[^+\d]/g, ''))}" class="ec">${icons.alert} ${t('Emergency')}: ${esc(e.emergency_name || '')}${e.emergency_relation ? ` (${esc(e.emergency_relation)})` : ''} ${esc(e.emergency_phone)}</a>`);
+  return bits.length ? `<div class="contact">${bits.join('')}</div>` : '';
+}
+// Birthdays in the next 14 days, nearest first
+function upcomingBirthdays(employees, today) {
+  const [ty] = today.split('-').map(Number);
+  return employees.filter((e) => e.active && e.birthday).map((e) => {
+    let next = `${ty}-${e.birthday.slice(5)}`;
+    if (next < today) next = `${ty + 1}-${e.birthday.slice(5)}`;
+    return { e, next, days: Math.round((Date.parse(next) - Date.parse(today)) / 86400e3) };
+  }).filter((x) => x.days <= 14).sort((a, b) => a.days - b.days);
+}
+function openQr() {
+  const url = location.origin + '/';
+  const qr = window.qrcode(0, 'M');
+  qr.addData(url); qr.make();
+  $('#qr-box').innerHTML = qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true, alt: 'QR code: ' + url });
+  $('#qr-url').textContent = url;
+  $('#qr-copy').onclick = async () => { try { await navigator.clipboard.writeText(url); toast(t('Link copied')); } catch { toast(url); } };
+  $('#qr-close').onclick = () => $('#dlg-qr').close();
+  $('#dlg-qr').showModal();
+}
+
 // ---------- team ----------
 function renderTeam() {
   const d = state.data;
   $('#page').innerHTML = `
     <div class="page-head">
       <div><h1>${t('Team')}</h1><p>${t('{n} active members. Each person signs in on their phone with a personal PIN.', { n: d.employees.filter((e) => e.active).length })}</p></div>
-      <div class="toolbar"><button class="btn btn-primary" id="tm-add">${icons.plus} ${t('Add team member')}</button></div>
+      <div class="toolbar"><button class="btn btn-ghost" id="tm-qr">${icons.qr} ${t('Install QR code')}</button><button class="btn btn-primary" id="tm-add">${icons.plus} ${t('Add team member')}</button></div>
     </div>
     <div class="team-cards">${d.employees.length ? d.employees.slice().sort((a, b) => b.active - a.active).map((e) => `
       <div class="card member ${e.active ? '' : 'inactive'}">
@@ -831,12 +860,14 @@ function renderTeam() {
         ${(() => { const b = (state.balances || []).find((x) => x.employee_id === e.id); const a = b?.annual;
           return a?.status === 'active' ? `<div class="bal-mini">${annualBar(a)}<span>${t('特休 {left} of {earned} days left · until {date}', { left: d1(a.remaining), earned: d1(a.earned), date: dateLabel(a.to, { month: 'short', day: 'numeric' }) })}</span></div>`
             : e.active && !e.start_date ? `<span class="muted" style="font-size:12.5px">${t('Add a start date to track 特休')}</span>` : ''; })()}
+        ${contactLines(e)}
         ${e.start_date ? `<span class="muted" style="font-size:12.5px">${t('Started {date}', { date: dateLabel(e.start_date, { year: 'numeric', month: 'short', day: 'numeric' }) })} · ${seniority(e.start_date, d.today)} · ${e.leave_system === 'calendar' ? t('Calendar year') : t('Anniversary year')}</span>` : ''}
         ${e.comp_status === 'proposed' ? `<span class="pill st-pending" style="justify-self:start"><span class="dot"></span>${t('補休: waiting for agreement')}</span>`
           : e.comp_status === 'active' ? `<span class="pill st-approved" style="justify-self:start"><span class="dot"></span>${t('補休: overtime banked')}${(() => { const c = (state.balances || []).find((x) => x.employee_id === e.id)?.comp?.balance; return c ? ' · ' + t('{n} h', { n: c.available }) : ''; })()}</span>` : ''}
         ${e.onShift ? `<span class="pill pill-live" style="justify-self:start"><span class="dot"></span>${t('On shift now')}</span>` : ''}
       </div>`).join('') : `<div class="card empty" style="grid-column:1/-1">${t("No team members yet. Add your first one — they'll appear on the time clock right away.")}</div>`}</div>`;
   $('#tm-add').onclick = () => openEmp();
+  $('#tm-qr').onclick = openQr;
   $('#page').querySelectorAll('[data-emp]').forEach((b) => (b.onclick = () => openEmp(d.employees.find((e) => e.id === Number(b.dataset.emp)))));
 }
 function openEmp(e, { focus } = {}) {
@@ -848,6 +879,9 @@ function openEmp(e, { focus } = {}) {
   $('#em-leave').value = e ? (e.leave_hours ?? 8) : 8;
   $('#em-salary').value = e ? e.monthly_salary || '' : '';
   $('#em-start').value = e?.start_date || '';
+  $('#em-bday').value = e?.birthday || ''; $('#em-phone').value = e?.phone || ''; $('#em-email').value = e?.email || '';
+  $('#em-ec-name').value = e?.emergency_name || ''; $('#em-ec-rel').value = e?.emergency_relation || ''; $('#em-ec-phone').value = e?.emergency_phone || '';
+  $('#em-personal').open = !e || !!(e.phone || e.email || e.birthday || e.emergency_phone);
   const cs = e?.comp_status || 'off';
   $('#em-comp').checked = cs === 'proposed' || cs === 'active';
   const compWhen = e?.comp_updated ? dateLabel(dayKey(e.comp_updated), { year: 'numeric', month: 'short', day: 'numeric' }) : '';
@@ -883,7 +917,9 @@ function openEmp(e, { focus } = {}) {
     if (ev.submitter?.value !== 'save') return;
     ev.preventDefault();
     const body = { name: $('#em-name').value, role: $('#em-role').value, hourly_rate: Number($('#em-rate').value) || 0, leave_hours: Number($('#em-leave').value), pin: $('#em-pin').value,
-      start_date: $('#em-start').value, leave_system: lsys, comp_time: $('#em-comp').checked, pay_type: payType, monthly_salary: Number($('#em-salary').value) || 0, daily_hours: Number($('#em-daily').value) || 8, insurance: Number($('#em-ins').value) || 0,
+      start_date: $('#em-start').value, leave_system: lsys, comp_time: $('#em-comp').checked,
+      birthday: $('#em-bday').value, phone: $('#em-phone').value, email: $('#em-email').value,
+      emergency_name: $('#em-ec-name').value, emergency_relation: $('#em-ec-rel').value, emergency_phone: $('#em-ec-phone').value, pay_type: payType, monthly_salary: Number($('#em-salary').value) || 0, daily_hours: Number($('#em-daily').value) || 8, insurance: Number($('#em-ins').value) || 0,
       work_days: [...$('#em-days').querySelectorAll('input:checked')].map((i) => i.value).join(',') };
     if (e) body.active = $('#em-active').checked;
     try {
