@@ -185,7 +185,9 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       'emergency_name TEXT', 'emergency_relation TEXT', 'emergency_phone TEXT', 'pin_changed INTEGER']) {
       try { await db.run(`ALTER TABLE employees ADD COLUMN ${col}`); } catch { /* exists */ }
     }
-    try { await db.run('ALTER TABLE leave_requests ADD COLUMN hours REAL'); } catch { /* exists */ }
+    for (const col of ['hours REAL', 'cancel_requested INTEGER DEFAULT 0', 'cancel_reason TEXT', 'cancel_requested_at INTEGER', 'revoked INTEGER DEFAULT 0']) {
+      try { await db.run(`ALTER TABLE leave_requests ADD COLUMN ${col}`); } catch { /* exists */ }
+    }
     if (!(await getSetting('admin_hash'))) {
       await setSetting('admin_hash', await hashSecret(adminPassword || 'parsley'));
       await setSetting('admin_default', adminPassword ? '0' : '1');
@@ -264,7 +266,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       week, todayMs, monthMs, now, today, timezone: TZ, geo: (await getSetting('geo')) === '1',
       balance: (await balancesFor([emp]))[0],
       comp: await compFor(emp),
-      leaveNotices: (await db.all("SELECT * FROM leave_requests WHERE employee_id = ? AND seen = 0 AND status IN ('approved', 'rejected') ORDER BY decided_at", [emp.id])).map(withDays),
+      leaveNotices: (await db.all("SELECT * FROM leave_requests WHERE employee_id = ? AND seen = 0 AND (status IN ('approved', 'rejected') OR (status = 'cancelled' AND revoked = 1)) ORDER BY decided_at", [emp.id])).map(withDays),
     };
   }
 
@@ -288,7 +290,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       db.all('SELECT s.*, e.name, e.color, e.role FROM shifts s JOIN employees e ON e.id = s.employee_id WHERE s.clock_out IS NULL ORDER BY s.clock_in'),
       db.all('SELECT s.*, e.name, e.color FROM shifts s JOIN employees e ON e.id = s.employee_id ORDER BY MAX(s.clock_in, COALESCE(s.clock_out, 0)) DESC LIMIT 12'),
       getSetting('company'), getSetting('admin_default'), getSetting('geo'), getSetting('alert_hours'),
-      db.get("SELECT COUNT(*) AS n FROM leave_requests WHERE status = 'pending'"),
+      db.get("SELECT COUNT(*) AS n FROM leave_requests WHERE status = 'pending' OR (status = 'approved' AND cancel_requested = 1)"),
       db.all(`SELECT l.*, e.name, e.color FROM leave_requests l JOIN employees e ON e.id = l.employee_id
         WHERE l.status = 'approved' AND l.end_date >= ? AND l.start_date <= ? ORDER BY l.start_date`, [today, addDays(today, 13)]),
       leaveEntries(monthStart, lastDayOfMonth(monthStart)),
@@ -689,12 +691,25 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       if ((lm = p.match(/^\/api\/leave\/(\d+)\/cancel$/)) && m === 'POST') {
         const r = await db.get('SELECT * FROM leave_requests WHERE id = ? AND employee_id = ?', [Number(lm[1]), emp.id]);
         if (!r) throw new HttpError(404, 'Request not found');
-        if (r.status !== 'pending') throw new HttpError(400, 'Only a pending request can be cancelled');
-        await db.run("UPDATE leave_requests SET status = 'cancelled', decided_at = ?, seen = 1 WHERE id = ?", [Date.now(), r.id]);
-        return json(200, { ok: true });
+        if (r.status === 'pending') {
+          await db.run("UPDATE leave_requests SET status = 'cancelled', decided_at = ?, seen = 1 WHERE id = ?", [Date.now(), r.id]);
+          return json(200, { ok: true, cancelled: true });
+        }
+        // Approved leave can't be removed by the employee: ask the manager to revoke it
+        if (r.status !== 'approved') throw new HttpError(400, 'Only a pending request can be cancelled');
+        if (r.end_date < dayKey(Date.now())) throw new HttpError(400, 'This leave is already over. Ask your manager.');
+        if (r.cancel_requested) throw new HttpError(400, 'You already asked to cancel this leave');
+        const { reason } = await readBody(req);
+        await db.run('UPDATE leave_requests SET cancel_requested = 1, cancel_reason = ?, cancel_requested_at = ? WHERE id = ?', [String(reason || '').slice(0, 300), Date.now(), r.id]);
+        later(notify('admin', null, (lang) => ({
+          title: lang === 'zh' ? `${emp.name} 申請取消休假` : `${emp.name} asks to cancel time off`,
+          body: `${LEAVE_LABEL[lang][r.type]} · ${fmtRange(r, lang)}${reason ? ` · ${reason}` : ''}`,
+          url: '/admin#timeoff', tag: `leave-${r.id}`,
+        }), origin));
+        return json(200, { ok: true, requested: true });
       }
       if (p === '/api/leave/seen' && m === 'POST') {
-        await db.run("UPDATE leave_requests SET seen = 1 WHERE employee_id = ? AND status IN ('approved', 'rejected')", [emp.id]);
+        await db.run("UPDATE leave_requests SET seen = 1 WHERE employee_id = ? AND (status IN ('approved', 'rejected') OR revoked = 1)", [emp.id]);
         return json(200, { ok: true });
       }
     }
@@ -806,6 +821,35 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         const ok = b.status === 'approved';
         later(notify('emp', r.employee_id, (lang) => ({
           title: lang === 'zh' ? (ok ? '休假已核准 ✓' : '休假未核准') : (ok ? 'Time off approved ✓' : 'Time off declined'),
+          body: `${LEAVE_LABEL[lang][r.type]} · ${fmtRange(r, lang)}${note ? ` · ${note}` : ''}`,
+          url: '/#timeoff', tag: `leave-${r.id}`,
+        }), origin));
+        return json(200, { ok: true });
+      }
+
+      let rv;
+      if ((rv = p.match(/^\/api\/admin\/leave\/(\d+)\/(revoke|keep)$/)) && m === 'POST') {
+        const r = await db.get('SELECT l.*, e.name FROM leave_requests l JOIN employees e ON e.id = l.employee_id WHERE l.id = ?', [Number(rv[1])]);
+        if (!r) throw new HttpError(404, 'Request not found');
+        if (r.status !== 'approved') throw new HttpError(400, 'Only approved leave can be revoked');
+        const note = String((await readBody(req)).manager_note || '').slice(0, 300);
+        if (rv[2] === 'keep') {
+          if (!r.cancel_requested) throw new HttpError(400, 'There is no cancellation request');
+          await db.run('UPDATE leave_requests SET cancel_requested = 0, manager_note = ? WHERE id = ?', [note || r.manager_note || '', r.id]);
+          later(notify('emp', r.employee_id, (lang) => ({
+            title: lang === 'zh' ? '休假維持核准' : 'Your time off stays approved',
+            body: `${LEAVE_LABEL[lang][r.type]} · ${fmtRange(r, lang)}${note ? ` · ${note}` : ''}`,
+            url: '/#timeoff', tag: `leave-${r.id}`,
+          }), origin));
+          return json(200, { ok: true });
+        }
+        // Don't silently change a payslip that is already paid
+        const months = [...new Set([r.start_date.slice(0, 7), r.end_date.slice(0, 7)])];
+        const paid = await db.get(`SELECT month FROM payroll_runs WHERE employee_id = ? AND status = 'paid' AND month IN (${months.map(() => '?').join(',')})`, [r.employee_id, ...months]);
+        if (paid) throw new HttpError(400, 'That month is already paid. Reopen the payslip first.');
+        await db.run("UPDATE leave_requests SET status = 'cancelled', revoked = 1, cancel_requested = 0, manager_note = ?, decided_at = ?, seen = 0 WHERE id = ?", [note, Date.now(), r.id]);
+        later(notify('emp', r.employee_id, (lang) => ({
+          title: lang === 'zh' ? '休假已取消' : 'Your time off was cancelled',
           body: `${LEAVE_LABEL[lang][r.type]} · ${fmtRange(r, lang)}${note ? ` · ${note}` : ''}`,
           url: '/#timeoff', tag: `leave-${r.id}`,
         }), origin));

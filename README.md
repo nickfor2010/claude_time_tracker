@@ -18,6 +18,13 @@ A time clock for the Parsley team. Staff install it on their phones and tap a bu
 
 Staff tap **Time off → Request** on their phone, then choose the type (annual 特休, personal 事假, sick 病假, other), the dates (or a half day) and a reason. The manager sees a badge and a banner, and approves or declines in **Time off** with an optional reply. The employee sees the answer the next time they open the app.
 
+**Cancelling approved leave (撤銷休假).**
+- A request still waiting for approval can be cancelled by the employee straight away.
+- Approved leave that hasn't ended yet shows **Ask to cancel** (申請取消) on the phone. The employee gives a reason and the manager is notified.
+- On the Time off page, **Asked to cancel** lists these requests. Tap **Revoke** (撤銷) to cancel the leave, or **Keep** to leave it approved. You can add a reply either way, and the employee is notified.
+- You can also **Revoke** any approved leave directly from the Time off tables.
+- Revoked leave no longer counts in balances or payroll. If that month's payslip is already marked paid, reopen it first.
+
 **Leave balances (假期餘額).** Give each person a start date (到職日) in Team. On the Time off page you then see, per person:
 - 特休 earned for the current anniversary year (勞基法 第38條: 6 months 3 days, 1 year 7, 2 years 10, 3 years 14, 5 years 15, then +1 per year from year 10 up to 30), plus used, pending and remaining days;
 - when the year ends, with a warning in the last 60 days so unused days get paid out or carried over;

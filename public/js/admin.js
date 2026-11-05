@@ -336,6 +336,7 @@ function openShift(s, { forgot = false } = {}) {
 function renderTimeoff() {
   const d = state.data, all = state.leave, today = d.today;
   const pending = all.filter((r) => r.status === 'pending').sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const cancelReqs = all.filter((r) => r.status === 'approved' && r.cancel_requested).sort((a, b) => a.start_date.localeCompare(b.start_date));
   const upcoming = all.filter((r) => r.status === 'approved' && r.end_date >= today).sort((a, b) => a.start_date.localeCompare(b.start_date));
   const history = all.filter((r) => !pending.includes(r) && !upcoming.includes(r));
   const ago = (ms) => dateLabel(dayKey(ms)) + ' ' + time(ms);
@@ -343,6 +344,19 @@ function renderTimeoff() {
     <div class="page-head"><div><h1>${t('Time off')}</h1><p>${t('Requests from your team. Approve or decline — they get notified right away.')}</p></div>
       <div class="toolbar"><button class="btn btn-ghost" data-goto="history">${icons.plus} ${t('Add past leave')}</button></div></div>
     <div class="card notif-card" id="admin-notif" style="margin:0 0 18px"></div>
+    ${cancelReqs.length ? `<div class="section-title">${t('Asked to cancel')} (${cancelReqs.length})</div>
+    <div class="req-cards" style="margin-bottom:22px">${cancelReqs.map((r) => `
+      <div class="card req req-cancel">
+        <div class="req-top">${avatar(r)}<div><div class="nm">${esc(r.name)}</div><div class="s">${t('Asked {when}', { when: ago(r.cancel_requested_at) })}</div></div>
+          <span class="pill st-cancelled" style="margin-left:auto"><span class="dot"></span>${t('Cancel request')}</span></div>
+        <div class="when">${leaveLabel(r.type)} · ${leaveRange(r)}</div>
+        ${r.cancel_reason ? `<div class="why">“${esc(r.cancel_reason)}”</div>` : ''}
+        <input class="input" data-creply="${r.id}" maxlength="300" placeholder="${t('Reply (optional)')}">
+        <div class="acts">
+          <button class="btn btn-ghost" data-keep="${r.id}">${t('Keep the leave')}</button>
+          <button class="btn btn-danger" data-revoke="${r.id}" data-from="req">${icons.x} ${t('Revoke leave')}</button>
+        </div>
+      </div>`).join('')}</div>` : ''}
     <div class="section-title">${t('Waiting for you')} (${pending.length})</div>
     <div class="req-cards">${pending.length ? pending.map((r) => `
       <div class="card req">
@@ -371,6 +385,21 @@ function renderTimeoff() {
       toast(status === 'approved' ? t('Approved — {name} will be notified', { name: all.find((r) => String(r.id) === id).name }) : t('Declined — {name} will be notified', { name: all.find((r) => String(r.id) === id).name }));
       refresh();
     } catch (e) { toast(e.message, true); b.disabled = false; }
+  }));
+  $('#page').querySelectorAll('[data-revoke]').forEach((b) => (b.onclick = async () => {
+    const r = all.find((x) => String(x.id) === b.dataset.revoke);
+    let note = b.dataset.from === 'req' ? $(`[data-creply="${r.id}"]`).value : '';
+    if (b.dataset.from !== 'req') { note = prompt(t('Revoke {name}\'s {type} ({dates})? The days go back to their balance and {name} is notified. Optional message:', { name: r.name, type: leaveLabel(r.type), dates: leaveRange(r) }), ''); if (note === null) return; }
+    else if (!confirm(t('Revoke {name}\'s {type} ({dates})? The days go back to their balance and {name} is notified.', { name: r.name, type: leaveLabel(r.type), dates: leaveRange(r) }))) return;
+    b.disabled = true;
+    try { await api(`/api/admin/leave/${r.id}/revoke`, { method: 'POST', body: { manager_note: note } }); toast(t('Leave revoked — {name} will be notified', { name: r.name })); refresh(); }
+    catch (e) { toast(e.message, true); b.disabled = false; }
+  }));
+  $('#page').querySelectorAll('[data-keep]').forEach((b) => (b.onclick = async () => {
+    const r = all.find((x) => String(x.id) === b.dataset.keep);
+    b.disabled = true;
+    try { await api(`/api/admin/leave/${r.id}/keep`, { method: 'POST', body: { manager_note: $(`[data-creply="${r.id}"]`).value } }); toast(t('Leave kept — {name} will be notified', { name: r.name })); refresh(); }
+    catch (e) { toast(e.message, true); b.disabled = false; }
   }));
   $('#page').querySelectorAll('[data-setstart]').forEach((b) => (b.onclick = () => openEmp(d.employees.find((e) => e.id === Number(b.dataset.setstart)), { focus: 'em-start' })));
   $('#page').querySelectorAll('[data-bal]').forEach((x) => (x.onclick = () => openBalance(state.balances.find((b) => b.employee_id === Number(x.dataset.bal)))));
@@ -497,9 +526,10 @@ function balanceTable(rows) {
 function leaveTable(rows, empty) {
   if (!rows.length) return `<div class="card empty">${empty}</div>`;
   return `<div class="card panel" style="padding:6px"><div class="table-wrap"><table class="tbl">
-    <thead><tr><th>${t('Employee')}</th><th>${t('Type')}</th><th>${t('Dates')}</th><th>${t('Status')}</th><th>${t('Note')}</th></tr></thead>
-    <tbody>${rows.map((r) => `<tr><td><span class="emp">${avatar(r)}${esc(r.name)}</span></td><td>${leaveLabel(r.type)}</td><td>${leaveRange(r)}</td><td>${statusPill(r.status)}</td>
-      <td class="muted" style="white-space:normal;min-width:160px">${esc(r.note)}${r.manager_note ? `<br><b>${t('Reply')}:</b> ${esc(r.manager_note)}` : ''}</td></tr>`).join('')}</tbody>
+    <thead><tr><th>${t('Employee')}</th><th>${t('Type')}</th><th>${t('Dates')}</th><th>${t('Status')}</th><th>${t('Note')}</th><th></th></tr></thead>
+    <tbody>${rows.map((r) => `<tr><td><span class="emp">${avatar(r)}${esc(r.name)}</span></td><td>${leaveLabel(r.type)}</td><td>${leaveRange(r)}</td><td>${statusPill(r.revoked ? 'revoked' : r.status)}${r.cancel_requested ? `<span class="sub" style="display:block;font-size:11.5px;color:var(--clay)">${t('asked to cancel')}</span>` : ''}</td>
+      <td class="muted" style="white-space:normal;min-width:160px">${esc(r.note)}${r.manager_note ? `<br><b>${t('Reply')}:</b> ${esc(r.manager_note)}` : ''}</td>
+      <td>${r.status === 'approved' ? `<button class="btn btn-ghost btn-sm" data-revoke="${r.id}">${t('Revoke')}</button>` : ''}</td></tr>`).join('')}</tbody>
   </table></div></div>`;
 }
 async function renderAdminNotif() {

@@ -297,6 +297,36 @@ test('full punch flow', async () => {
   assert.equal((await phone2('/api/login', { method: 'POST', body: { employeeId: emp.id, pin: '4321' } })).status, 401);
   assert.equal((await phone2('/api/login', { method: 'POST', body: { employeeId: emp.id, pin: '5826' } })).status, 200);
 
+  // Revoking approved leave: employee asks, manager revokes or keeps; balances follow; paid months are protected
+  const far = (n) => { const d = new Date(Date.parse(today + 'T00:00:00Z') + n * 86400e3); return d.toISOString().slice(0, 10); };
+  const lv = (await phone('/api/leave', { method: 'POST', body: { type: 'annual', start: far(40), end: far(41) } })).data;
+  await admin(`/api/admin/leave/${lv.id}`, { method: 'POST', body: { status: 'approved' } });
+  const usedBefore = (await admin('/api/admin/balances')).data.balances.find((b) => b.employee_id === emp.id).annual;
+  assert.equal((await phone(`/api/leave/${lv.id}/cancel`, { method: 'POST', body: { reason: 'Plans changed' } })).data.requested, true);
+  assert.equal((await phone(`/api/leave/${lv.id}/cancel`, { method: 'POST', body: {} })).status, 400); // asked already
+  let ovr = (await admin('/api/admin/overview')).data;
+  assert.ok(ovr.pendingLeave >= 1);
+  let lr = (await admin('/api/admin/leave')).data.requests.find((r) => r.id === lv.id);
+  assert.deepEqual([lr.status, lr.cancel_requested, lr.cancel_reason], ['approved', 1, 'Plans changed']);
+  // keep it
+  assert.equal((await admin(`/api/admin/leave/${lv.id}/keep`, { method: 'POST', body: { manager_note: 'We need you that week' } })).status, 200);
+  lr = (await admin('/api/admin/leave')).data.requests.find((r) => r.id === lv.id);
+  assert.deepEqual([lr.status, lr.cancel_requested], ['approved', 0]);
+  // revoke it (manager can revoke directly too)
+  assert.equal((await admin(`/api/admin/leave/${lv.id}/revoke`, { method: 'POST', body: { manager_note: 'Cancelled as asked' } })).status, 200);
+  assert.equal((await admin(`/api/admin/leave/${lv.id}/revoke`, { method: 'POST', body: {} })).status, 400); // already cancelled
+  const after = (await admin('/api/admin/balances')).data.balances.find((b) => b.employee_id === emp.id).annual;
+  assert.ok(after.used <= usedBefore.used && after.remaining >= usedBefore.remaining);
+  const notice = (await phone('/api/me')).data.leaveNotices.find((n) => n.id === lv.id);
+  assert.deepEqual([notice.status, notice.revoked], ['cancelled', 1]);
+  // a leave in a paid month can't be revoked until the payslip is reopened
+  const paidLv = (await admin('/api/admin/leave', { method: 'POST', body: { employee_id: emp.id, type: 'sick', start: '2027-01-06', end: '2027-01-06' } }));
+  const paidId = (await admin('/api/admin/leave')).data.requests.find((r) => r.start_date === '2027-01-06' && r.employee_id === emp.id).id;
+  await admin(`/api/admin/payroll/2027-01/${emp.id}/paid`, { method: 'POST' });
+  assert.equal((await admin(`/api/admin/leave/${paidId}/revoke`, { method: 'POST', body: {} })).status, 400);
+  await admin(`/api/admin/payroll/2027-01/${emp.id}/reopen`, { method: 'POST' });
+  assert.equal((await admin(`/api/admin/leave/${paidId}/revoke`, { method: 'POST', body: {} })).status, 200);
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

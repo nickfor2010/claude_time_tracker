@@ -144,4 +144,4 @@ export function leaveRange(r) {
   const days = r.half_day ? t('half day') : r.days === 1 ? t('1 day') : t('{n} days', { n: r.days });
   return `${r.start_date === r.end_date ? dateLabel(r.start_date, { weekday: 'short', ...o }) : `${dateLabel(r.start_date, o)} – ${dateLabel(r.end_date, o)}`} · ${days}`;
 }
-export const statusPill = (st) => `<span class="pill st-${st}"><span class="dot"></span>${t({ pending: 'Waiting for approval', approved: 'Approved', rejected: 'Declined', cancelled: 'Cancelled' }[st])}</span>`;
+export const statusPill = (st) => `<span class="pill st-${st === 'revoked' ? 'rejected' : st}"><span class="dot"></span>${t({ pending: 'Waiting for approval', approved: 'Approved', rejected: 'Declined', cancelled: 'Cancelled', revoked: 'Revoked by manager' }[st])}</span>`;

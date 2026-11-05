@@ -242,7 +242,7 @@ function renderLeave() {
   $('#leave-notice').innerHTML = (me.leaveNotices || []).map((r) => {
     const ok = r.status === 'approved';
     return `<div class="notice ${ok ? 'ok' : 'no'}" role="status"><span class="ico">${ok ? icons.check : icons.x}</span>
-      <div><b>${ok ? t('Your time off was approved') : t('Your time off was declined')}</b>
+      <div><b>${ok ? t('Your time off was approved') : r.revoked ? t('Your time off was cancelled') : t('Your time off was declined')}</b>
       <div class="s">${leaveLabel(r.type)} · ${leaveRange(r)}${r.manager_note ? `<br>“${esc(r.manager_note)}”` : ''}</div></div>
       <button class="btn btn-ghost btn-sm" data-seen>${t('OK')}</button></div>`;
   }).join('');
@@ -270,12 +270,19 @@ function renderLeave() {
   $('#leave-list').innerHTML = visible.length ? visible.map((r) => `
     <div class="lv-row">
       <div class="tl-ico">${icons.plane}</div>
-      <div class="tl-main"><div class="t">${leaveLabel(r.type)} ${statusPill(r.status)}</div>
+      <div class="tl-main"><div class="t">${leaveLabel(r.type)} ${statusPill(r.revoked ? 'revoked' : r.status)}${r.cancel_requested ? ` <span class="pill st-pending"><span class="dot"></span>${t('Cancellation requested')}</span>` : ''}</div>
         <div class="s">${leaveRange(r)}</div>
         ${r.note ? `<div class="s">${esc(r.note)}</div>` : ''}
         ${r.manager_note ? `<div class="reply">${t('Manager')}: ${esc(r.manager_note)}</div>` : ''}</div>
-      ${r.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-cancel="${r.id}">${t('Cancel')}</button>` : ''}
+      ${r.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-cancel="${r.id}">${t('Cancel')}</button>`
+        : r.status === 'approved' && r.end_date >= me.today && !r.cancel_requested ? `<button class="btn btn-ghost btn-sm" data-askcancel="${r.id}">${t('Ask to cancel')}</button>` : ''}
     </div>`).join('') : `<div class="empty">${t('No time-off requests yet.')}</div>`;
+  $('#leave-list').querySelectorAll('[data-askcancel]').forEach((b) => (b.onclick = async () => {
+    const reason = prompt(t('Ask your manager to cancel this approved leave? You can add a reason:'), '');
+    if (reason === null) return;
+    try { await api(`/api/leave/${b.dataset.askcancel}/cancel`, { method: 'POST', body: { reason } }); toast(t('Your manager has been asked to cancel it')); loadMe(); }
+    catch (e) { toast(e.message, true); }
+  }));
   $('#leave-list').querySelectorAll('[data-cancel]').forEach((b) => (b.onclick = async () => {
     if (!confirm(t('Cancel this request?'))) return;
     try { await api(`/api/leave/${b.dataset.cancel}/cancel`, { method: 'POST' }); toast(t('Request cancelled')); loadMe(); }

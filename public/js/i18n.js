@@ -559,6 +559,27 @@ const zh = {
   'Birthday must be a date': '生日格式錯誤',
   'Email address looks wrong': 'Email 格式錯誤',
   'Phone number looks wrong': '電話號碼格式錯誤',
+  // revoke approved leave
+  'Asked to cancel': '申請取消',
+  'Cancel request': '取消申請',
+  'Keep the leave': '維持休假',
+  'Revoke leave': '撤銷休假',
+  'Revoke': '撤銷',
+  "Revoke {name}'s {type} ({dates})? The days go back to their balance and {name} is notified. Optional message:": '確定撤銷 {name} 的{type}（{dates}）嗎？天數將退回假期餘額，並通知 {name}。可輸入訊息：',
+  "Revoke {name}'s {type} ({dates})? The days go back to their balance and {name} is notified.": '確定撤銷 {name} 的{type}（{dates}）嗎？天數將退回假期餘額，並通知 {name}。',
+  'Leave revoked — {name} will be notified': '已撤銷休假，將通知 {name}',
+  'Leave kept — {name} will be notified': '已維持休假，將通知 {name}',
+  'asked to cancel': '已申請取消',
+  'Revoked by manager': '已由管理者撤銷',
+  'Your time off was cancelled': '你的休假已取消',
+  'Cancellation requested': '已申請取消',
+  'Ask to cancel': '申請取消',
+  'Ask your manager to cancel this approved leave? You can add a reason:': '要請管理者取消這個已核准的休假嗎？可以輸入原因：',
+  'Your manager has been asked to cancel it': '已請管理者取消',
+  'Only approved leave can be revoked': '只能撤銷已核准的休假',
+  'There is no cancellation request': '沒有取消申請',
+  'This leave is already over. Ask your manager.': '這個休假已經結束，請聯絡管理者。',
+  'You already asked to cancel this leave': '你已經申請取消這個休假',
 };
 
 export function getLang() {
