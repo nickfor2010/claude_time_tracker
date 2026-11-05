@@ -461,3 +461,14 @@ dialog { overflow-x: hidden; }
 input[type="file"].input { padding: 8px; }
 #bf-form .row-3 { grid-template-columns: 1fr 1fr; }
 #bf-form .row-3 .field:last-child { grid-column: 1 / -1; max-width: 160px; }
+
+/* 補休 */
+.comp-box { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.comp-ask ul { margin: 6px 0 10px; padding-left: 18px; }
+.comp-ask .ico { background: var(--orange); }
+.lv-hours input { max-width: 120px; }
+
+.bal-table td, .bal-table th { padding-left: 8px; padding-right: 8px; }
+.bal-table td .sub { white-space: normal; }
+.bal-table [data-comppay] { display: block; margin-top: 4px; white-space: nowrap; }
+.bal-table td:nth-child(3) { min-width: 200px; }

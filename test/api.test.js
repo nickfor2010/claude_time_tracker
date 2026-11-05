@@ -246,6 +246,35 @@ test('full punch flow', async () => {
   assert.ok(h24.includes('2024-04-05') && h24.includes('2024-02-14'));
   assert.ok((await admin('/api/admin/holidays?year=2021')).data.holidays.some((h) => h.date === '2021-12-31'));
 
+  // 補休: manager proposes -> nothing changes until the employee agrees -> overtime banked -> request by the hour
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { pay_type: 'hourly', hourly_rate: 200, daily_hours: 8, work_days: '0,1,2,3,4,5,6' } });
+  assert.equal((await phone('/api/comp/withdraw', { method: 'POST' })).status, 400);
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { comp_time: true } });
+  let me3 = (await phone('/api/me')).data;
+  assert.equal(me3.comp.status, 'proposed');
+  assert.equal(me3.comp.balance, null);
+  assert.equal((await phone('/api/leave', { method: 'POST', body: { type: 'comp', start: today, end: today, hours: 1 } })).status, 400); // nothing banked
+  assert.equal((await phone('/api/comp/consent', { method: 'POST', body: { agree: true } })).status, 200);
+  assert.equal((await phone('/api/comp/consent', { method: 'POST', body: { agree: true } })).status, 400); // already answered
+  // today: 11 h + the 4 h shift from earlier = 15 h -> 7 h overtime, banked, not paid
+  await admin('/api/admin/shifts', { method: 'POST', body: { employee_id: emp.id, date: today, in: '07:00', out: '18:00' } });
+  me3 = (await phone('/api/me')).data;
+  assert.equal(me3.comp.status, 'active');
+  assert.equal(me3.comp.balance.earned, 7);
+  const prNow = (await admin(`/api/admin/payroll?month=${today.slice(0, 7)}`)).data.rows.find((r) => r.employee_id === emp.id);
+  assert.equal(prNow.hours.comp, 7);
+  assert.equal(prNow.hours.ot1 + prNow.hours.ot2, 0);
+  // ask for 2 h, then more than is left (Vera works every day in this test, so today is a work day)
+  assert.equal((await phone('/api/leave', { method: 'POST', body: { type: 'comp', start: today, end: today, hours: 2 } })).status, 201);
+  assert.equal((await phone('/api/leave', { method: 'POST', body: { type: 'comp', start: today, end: today, hours: 6 } })).status, 400);
+  assert.equal((await admin('/api/admin/balances')).data.balances.find((b) => b.employee_id === emp.id).comp.balance.requestable, 5);
+  // the employee can stop it; banked hours stay
+  assert.equal((await phone('/api/comp/withdraw', { method: 'POST' })).status, 200);
+  me3 = (await phone('/api/me')).data;
+  assert.deepEqual([me3.comp.status, me3.comp.balance.earned], ['off', 7]);
+  // nothing expired yet -> nothing to pay out
+  assert.equal((await admin(`/api/admin/comp/${emp.id}/payout`, { method: 'POST', body: {} })).status, 400);
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

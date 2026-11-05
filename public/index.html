@@ -53,6 +53,7 @@
     <!-- 3. Punch -->
     <section id="view-punch" class="hidden">
       <div class="hero-clock"><div class="time tnum" data-clock></div><div class="date" data-date></div></div>
+      <div id="comp-proposal"></div>
       <div id="leave-notice"></div>
       <div class="status-line" id="status"></div>
       <div class="punch-zone">
@@ -75,6 +76,7 @@
       <div class="card timeline" id="today"></div>
       <div class="section-title section-row" id="timeoff"><span data-i18n>Time off</span><button class="btn btn-primary btn-sm" id="leave-new"></button></div>
       <div class="card bal-card hidden" id="my-balance"></div>
+      <div class="card bal-card hidden" id="my-comp"></div>
       <div class="card timeline" id="leave-list"></div>
       <div class="card notif-card hidden" id="notif-card"></div>
       <div id="payslip-block" class="hidden">
@@ -94,8 +96,9 @@
       <div class="field"><label for="lv-type" data-i18n>Type</label>
         <div class="seg" id="lv-type" role="radiogroup"></div></div>
       <div class="row-2">
-        <div class="field"><label for="lv-start" data-i18n>From</label><input class="input" type="date" id="lv-start" required></div>
-        <div class="field"><label for="lv-end" data-i18n>To</label><input class="input" type="date" id="lv-end" required></div>
+        <div class="field"><label for="lv-start" id="lv-start-label" data-i18n>From</label><input class="input" type="date" id="lv-start" required></div>
+        <div class="field lv-range"><label for="lv-end" data-i18n>To</label><input class="input" type="date" id="lv-end" required></div>
+        <div class="field lv-hours hidden"><label for="lv-hours" data-i18n>Hours</label><input class="input" type="number" min="0.5" step="0.5" id="lv-hours" value="1"></div>
       </div>
       <p class="muted hidden" id="lv-bal" style="margin:-4px 0 0;font-size:13.5px"></p>
       <label class="check hidden" id="lv-half-wrap"><input type="checkbox" id="lv-half"> <span data-i18n>Half day only</span></label>

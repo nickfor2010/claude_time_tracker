@@ -7,7 +7,7 @@ const admin = !!emp;
 const $ = (s) => document.querySelector(s);
 const nt = (n) => 'NT$ ' + Math.round(n).toLocaleString('en-US');
 const L = (zh, en) => `${zh} <small>${en}</small>`;
-const leaveName = { annual: ['特休', 'Annual leave'], sick: ['病假', 'Sick leave'], personal: ['事假', 'Personal leave'], other: ['其他休假', 'Other leave'] };
+const leaveName = { annual: ['特休', 'Annual leave'], sick: ['病假', 'Sick leave'], personal: ['事假', 'Personal leave'], other: ['其他休假', 'Other leave'], comp: ['補休', 'Comp time off'] };
 const h = (x) => (Math.round(x * 100) / 100).toLocaleString('en-US');
 
 $('#back').href = admin ? '/admin#payroll' : '/';
@@ -24,6 +24,7 @@ function render({ row: r, company }) {
     r.earnings.holiday ? [L('國定假日工資', `Holiday pay · ${(r.holidays || []).filter((x) => x.paid).length} d × ${h(r.daily_hours)} h`), r.earnings.holiday] : null,
     r.earnings.holiday_work ? [L('國定假日出勤加給', `Holiday work pay · ${h(r.hours.holiday)} h worked`), r.earnings.holiday_work] : null,
     r.earnings.leave_payout ? [L('特休未休折算工資', `Unused annual leave · ${h(r.leave_payout_days)} d`), r.earnings.leave_payout] : null,
+    r.earnings.comp_payout ? [L('補休未休折發工資', `Unused comp time · ${h(r.comp_payout_hours)} h at overtime rate`), r.earnings.comp_payout] : null,
     r.earnings.bonus ? [L('獎金', 'Bonus'), r.earnings.bonus] : null,
   ].filter(Boolean);
   const ded = [
@@ -56,6 +57,7 @@ function render({ row: r, company }) {
         <div><small>加班 Overtime</small><b>${h(r.hours.ot1 + r.hours.ot2)}</b></div>
         <div><small>休假天數 Leave days</small><b>${h(leaveDays)}</b></div>
       </section>
+      ${r.hours.comp ? `<div class="note"><b>加班轉補休 Overtime banked as comp time：</b>${h(r.hours.comp)} h（不另計加班費 · not paid as overtime）</div>` : ''}
       ${(r.holidays || []).length ? `<div class="note"><b>國定假日 Holidays：</b>${r.holidays.map((x) => `${x.date.slice(5).replace('-', '/')} ${esc(x.name)}${x.worked ? `（出勤 worked ${h(x.worked)} h）` : ''}`).join('、')}</div>` : ''}
       ${r.note ? `<div class="note"><b>備註 Note：</b>${esc(r.note)}</div>` : ''}
       <div class="sign"><div>員工簽名 Employee signature</div><div>雇主簽章 Employer</div></div>

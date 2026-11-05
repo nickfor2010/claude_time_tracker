@@ -57,6 +57,16 @@ Each person is either **Hourly** (part-time) or **Monthly salary** (full-time). 
 - **Payslips.** Bilingual (中文 + English) and printable to A4/PDF. Staff see their paid payslips under **Payslips** on their phone.
 - **Settings.** Every rate is editable in Settings → Overtime and Paid leave. Please have your accountant confirm them.
 
+## 補休: overtime as time off (加班換補休)
+
+This follows Labor Standards Act art. 32-1.
+
+- **You propose.** In Team → edit a person, tick **加班換補休**. The person is notified and must **agree** or **decline** in the app. Nothing changes until they agree, and both sides see when it was agreed.
+- **Overtime is banked.** While the agreement is on, overtime is banked **hour for hour** as 補休 instead of being paid. The Payroll page shows it as "→ 補休", and the payslip notes it.
+- **Requesting.** Staff request 補休 **by the hour** on one of their work days. You approve it in Time off. Taking 補休 is paid time.
+- **Expiry.** Hours must be used within the agreed period (Settings → Overtime, default 6 months). Hours not used in time are shown in Leave balances with a **pay-out** button, paid at the overtime rate of when they were worked (補休未休折發工資).
+- **Stopping.** The employee (or you) can stop at any time. Overtime is paid again from the next day, and banked hours stay usable.
+
 ## History & import (歷史資料與匯入)
 
 Go to Timesheets → **History & import**.

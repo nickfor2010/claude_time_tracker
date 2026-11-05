@@ -108,6 +108,7 @@ async function loadMe() {
     show('punch');
     paintClock();
     if (location.hash === '#timeoff') { history.replaceState(null, '', '/'); $('#timeoff').scrollIntoView({ behavior: 'smooth' }); }
+    if (location.hash === '#comp') { history.replaceState(null, '', '/'); ($('#comp') || $('#my-comp')).scrollIntoView({ behavior: 'smooth' }); }
   } catch (e) {
     if (e.status === 401) return showTeam();
     toast(e.message, true);
@@ -168,7 +169,42 @@ function renderPayslips() {
 }
 
 // ---------- time off ----------
+// ---------- 補休 (comp time) ----------
+function renderComp() {
+  const c = me.comp || { status: 'off' };
+  const months = c.balance?.expiry_months || me.compExpiry || 6;
+  $('#comp-proposal').innerHTML = c.status === 'proposed' ? `
+    <div class="notice comp-ask" id="comp" role="alert"><span class="ico">${icons.clock}</span>
+      <div><b>${t('Your manager proposes 加班換補休')}</b>
+        <ul class="s">
+          <li>${t('Overtime becomes 補休 (time off) hour for hour, instead of overtime pay.')}</li>
+          <li>${t('Use it within {n} months. Hours not used in time are paid at the overtime rate.', { n: months })}</li>
+          <li>${t('You can stop at any time; overtime is then paid again.')}</li>
+        </ul>
+        <div class="settle-acts"><button class="btn btn-primary btn-sm" data-consent="1">${t('I agree')}</button><button class="btn btn-ghost btn-sm" data-consent="0">${t('No, keep overtime pay')}</button></div>
+      </div></div>` : '';
+  $('#comp-proposal').querySelectorAll('[data-consent]').forEach((b) => (b.onclick = async () => {
+    const agree = b.dataset.consent === '1';
+    if (agree && !confirm(t('Agree to bank your overtime as 補休 from today?'))) return;
+    try { await api('/api/comp/consent', { method: 'POST', body: { agree } }); toast(agree ? t('Agreed — overtime is now banked as 補休') : t('Declined — overtime stays paid')); loadMe(); }
+    catch (e) { toast(e.message, true); }
+  }));
+  const box = $('#my-comp'), bal = c.balance;
+  if (!bal && c.status !== 'active') { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="bal-top"><span>${t('Comp time off (補休)')}</span><b>${t('{n} h available', { n: bal?.available ?? 0 })}</b></div>
+    <div class="s">${bal ? t('{earned} h earned · {used} h used · {pending} h pending', { earned: bal.earned, used: bal.used, pending: bal.pending }) : ''}
+    ${bal?.next_expiry ? ' · ' + t('next hours expire {date}', { date: dateLabel(bal.next_expiry, { month: 'short', day: 'numeric' }) }) : ''}</div>
+    <div class="s">${c.status === 'active' ? `${t('Your overtime is banked as 補休 since {date}.', { date: dateLabel(c.since, { month: 'short', day: 'numeric', year: 'numeric' }) })} <button class="btn btn-ghost btn-sm" id="comp-stop">${t('Stop')}</button>` : t('Overtime is paid (補休 is off).')}</div>`;
+  const stop = $('#comp-stop');
+  if (stop) stop.onclick = async () => {
+    if (!confirm(t('Stop banking overtime? From tomorrow overtime is paid again. Hours already banked can still be used.'))) return;
+    try { await api('/api/comp/withdraw', { method: 'POST' }); toast(t('Comp time stopped')); loadMe(); } catch (e) { toast(e.message, true); }
+  };
+}
+
 function renderLeave() {
+  renderComp();
   $('#leave-new').innerHTML = `${icons.plus} ${t('Request')}`;
   // Answers from the manager that this person hasn't seen yet
   $('#leave-notice').innerHTML = (me.leaveNotices || []).map((r) => {
@@ -238,10 +274,24 @@ function openLeave() {
   const tomorrow = new Date(Date.parse(me.today + 'T00:00:00Z') + 86400e3).toISOString().slice(0, 10);
   let type = 'annual';
   const paintTypes = () => {
-    $('#lv-type').innerHTML = LEAVE_TYPES.map((k) => `<button type="button" role="radio" aria-checked="${k === type}" data-type="${k}">${leaveLabel(k)}</button>`).join('');
+    const types = [...LEAVE_TYPES, ...(me.comp?.balance?.requestable > 0 ? ['comp'] : [])];
+    $('#lv-type').innerHTML = types.map((k) => `<button type="button" role="radio" aria-checked="${k === type}" data-type="${k}">${leaveLabel(k)}</button>`).join('');
+    const comp = type === 'comp';
+    document.querySelector('.lv-range').classList.toggle('hidden', comp);
+    document.querySelector('.lv-hours').classList.toggle('hidden', !comp);
+    $('#lv-start-label').textContent = comp ? t('Date') : t('From');
+    if (comp) {
+      $('#lv-hours').max = Math.min(me.comp.balance.requestable, me.employee.daily_hours || 8);
+      // default to the next work day
+      const wd = String(me.employee.work_days ?? '1,2,3,4,5').split(',').map(Number);
+      let d = $('#lv-start').value;
+      for (let i = 0; i < 7 && !wd.includes(new Date(d + 'T00:00:00Z').getUTCDay()); i++) d = new Date(Date.parse(d + 'T00:00:00Z') + 86400e3).toISOString().slice(0, 10);
+      $('#lv-start').value = d; $('#lv-end').value = d; $('#lv-half-wrap').classList.add('hidden');
+    }
     const a = me.balance?.annual;
     $('#lv-bal').classList.toggle('hidden', !(type === 'annual' && a?.status === 'active'));
     if (type === 'annual' && a?.status === 'active') $('#lv-bal').textContent = t('You have {n} days of 特休 left (until {date}).', { n: a.remaining - a.pending, date: dateLabel(a.to, { month: 'short', day: 'numeric' }) });
+    if (comp) { $('#lv-bal').classList.remove('hidden'); $('#lv-bal').textContent = t('You can ask for up to {n} h of 補休.', { n: me.comp.balance.requestable }); }
   };
   paintTypes();
   $('#lv-type').onclick = (ev) => { const b = ev.target.closest('[data-type]'); if (b) { type = b.dataset.type; paintTypes(); } };
@@ -250,14 +300,15 @@ function openLeave() {
   const syncHalf = () => {
     if ($('#lv-end').value < $('#lv-start').value) $('#lv-end').value = $('#lv-start').value;
     $('#lv-end').min = $('#lv-start').value;
-    $('#lv-half-wrap').classList.toggle('hidden', $('#lv-start').value !== $('#lv-end').value);
+    $('#lv-half-wrap').classList.toggle('hidden', type === 'comp' || $('#lv-start').value !== $('#lv-end').value);
   };
   $('#lv-start').onchange = syncHalf; $('#lv-end').onchange = syncHalf; syncHalf();
   $('#form-leave').onsubmit = async (ev) => {
     if (ev.submitter?.value !== 'save') return;
     ev.preventDefault();
     try {
-      await api('/api/leave', { method: 'POST', body: { type, start: $('#lv-start').value, end: $('#lv-end').value, half: $('#lv-half').checked, note: $('#lv-note').value } });
+      const comp = type === 'comp';
+      await api('/api/leave', { method: 'POST', body: { type, start: $('#lv-start').value, end: comp ? $('#lv-start').value : $('#lv-end').value, half: !comp && $('#lv-half').checked, hours: comp ? Number($('#lv-hours').value) : undefined, note: $('#lv-note').value } });
       $('#dlg-leave').close();
       toast(t('Request sent to your manager'));
       await loadMe();

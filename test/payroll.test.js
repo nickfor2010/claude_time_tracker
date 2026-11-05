@@ -11,7 +11,7 @@ test('hourly: overtime after daily hours at 1.34 then 1.67', () => {
   const e = { id: 1, name: 'Tina', pay_type: 'hourly', hourly_rate: 200, daily_hours: 8 };
   // Mon 2 Nov: 11h worked -> 8 regular, 2 at 1.34, 1 at 1.67
   const r = computePay({ ...base, e, shifts: [shift('2026-11-02', '08:00', '19:00')] });
-  assert.deepEqual(r.hours, { worked: 11, regular: 8, ot1: 2, ot2: 1, holiday: 0, holiday_extra: 0 });
+  assert.deepEqual(r.hours, { worked: 11, regular: 8, ot1: 2, ot2: 1, holiday: 0, holiday_extra: 0, comp: 0 });
   assert.equal(r.earnings.base, 1600);
   assert.equal(r.earnings.overtime, Math.round(2 * 200 * 1.34 + 200 * 1.67)); // 536 + 334 = 870
   assert.equal(r.gross, 2470);
@@ -29,7 +29,7 @@ test('monthly: salary, overtime at salary/240, unpaid leave deducted, sick 50%',
   ];
   const r = computePay({ ...base, e, shifts, leave });
   assert.equal(r.rate, 200); // 48000 / 240
-  assert.deepEqual(r.hours, { worked: 14, regular: 8, ot1: 4, ot2: 2, holiday: 0, holiday_extra: 0 });
+  assert.deepEqual(r.hours, { worked: 14, regular: 8, ot1: 4, ot2: 2, holiday: 0, holiday_extra: 0, comp: 0 });
   assert.equal(r.earnings.base, 48000);
   assert.equal(r.earnings.overtime, Math.round(4 * 200 * 1.34 + 2 * 200 * 1.67)); // 1072 + 668
   assert.equal(r.deductions.leave, 2 * 8 * 200 + 8 * 200 * 0.5); // 3200 + 800
@@ -53,7 +53,7 @@ test('adjustments: bonus, other deduction and insurance override', () => {
 test('overtime can be switched off', () => {
   const e = { id: 4, name: 'X', pay_type: 'hourly', hourly_rate: 100 };
   const r = computePay({ ...base, e, shifts: [shift('2026-11-02', '08:00', '20:00')], cfg: { ...DEFAULT_PAYROLL, ot_auto: false } });
-  assert.deepEqual(r.hours, { worked: 12, regular: 12, ot1: 0, ot2: 0, holiday: 0, holiday_extra: 0 });
+  assert.deepEqual(r.hours, { worked: 12, regular: 12, ot1: 0, ot2: 0, holiday: 0, holiday_extra: 0, comp: 0 });
   assert.equal(r.gross, 1200);
 });
 
@@ -63,7 +63,7 @@ test('national holidays: paid day off for hourly staff, double pay when worked, 
   // Hourly, works Mon–Fri 8 h: 9/25 not worked -> paid 8 h; 9/28 worked 10 h -> extra full day + 2 h overtime
   const tina = { id: 5, name: 'Tina', pay_type: 'hourly', hourly_rate: 200, daily_hours: 8, work_days: '1,2,3,4,5' };
   const r = computePay({ ...m, e: tina, shifts: [shift('2026-09-28', '08:00', '18:00')] });
-  assert.deepEqual(r.hours, { worked: 10, regular: 8, ot1: 2, ot2: 0, holiday: 10, holiday_extra: 8 });
+  assert.deepEqual(r.hours, { worked: 10, regular: 8, ot1: 2, ot2: 0, holiday: 10, holiday_extra: 8, comp: 0 });
   assert.equal(r.earnings.base, 1600);
   assert.equal(r.earnings.overtime, Math.round(2 * 200 * 1.34));
   assert.equal(r.earnings.holiday, 1600);        // 9/25 paid day off

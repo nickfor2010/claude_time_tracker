@@ -132,9 +132,10 @@ export async function disablePush(role) {
 }
 
 export const LEAVE_TYPES = ['annual', 'personal', 'sick', 'other'];
-export const leaveLabel = (type) => t({ annual: 'Annual leave', personal: 'Personal leave', sick: 'Sick leave', other: 'Other leave' }[type] || type);
+export const leaveLabel = (type) => t({ annual: 'Annual leave', personal: 'Personal leave', sick: 'Sick leave', other: 'Other leave', comp: 'Comp time off' }[type] || type);
 export function leaveRange(r) {
   const o = { month: 'short', day: 'numeric' };
+  if (r.type === 'comp') return `${dateLabel(r.start_date, { weekday: 'short', ...o })} · ${t('{n} h', { n: r.hours })}`;
   const days = r.half_day ? t('half day') : r.days === 1 ? t('1 day') : t('{n} days', { n: r.days });
   return `${r.start_date === r.end_date ? dateLabel(r.start_date, { weekday: 'short', ...o }) : `${dateLabel(r.start_date, o)} – ${dateLabel(r.end_date, o)}`} · ${days}`;
 }

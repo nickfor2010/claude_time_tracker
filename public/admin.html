@@ -100,6 +100,10 @@
         <div class="field"><label for="em-ins" data-i18n>Insurance deduction / month (NT$)</label><input class="input" type="number" min="0" step="1" id="em-ins" value="0"></div>
       </div>
       <div class="field"><label for="em-pin" id="em-pin-label">PIN (4–6 digits)</label><input class="input" id="em-pin" inputmode="numeric" pattern="\d{4,6}" maxlength="6" autocomplete="off"></div>
+      <div class="comp-box">
+        <label class="check"><input type="checkbox" id="em-comp"> <span data-i18n>Convert overtime into 補休 (comp time)</span></label>
+        <p class="muted" id="em-comp-status" style="margin:2px 0 0 28px;font-size:12.5px"></p>
+      </div>
       <label class="check hidden" id="em-active-wrap"><input type="checkbox" id="em-active"> <span data-i18n>Active (can clock in)</span></label>
       <div class="err" id="em-err"></div>
       <div class="dlg-actions">

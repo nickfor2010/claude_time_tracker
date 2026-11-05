@@ -374,6 +374,13 @@ function renderTimeoff() {
   }));
   $('#page').querySelectorAll('[data-setstart]').forEach((b) => (b.onclick = () => openEmp(d.employees.find((e) => e.id === Number(b.dataset.setstart)), { focus: 'em-start' })));
   $('#page').querySelectorAll('[data-bal]').forEach((x) => (x.onclick = () => openBalance(state.balances.find((b) => b.employee_id === Number(x.dataset.bal)))));
+  $('#page').querySelectorAll('[data-comppay]').forEach((x) => (x.onclick = async () => {
+    const b = state.balances.find((y) => y.employee_id === Number(x.dataset.comppay));
+    const month = prompt(t('{name}: {h} h of 補休 expired unused. By law they are paid at the overtime rate ({pay}). Add to which payroll month? (YYYY-MM)', { name: b.name, h: b.comp.balance.expired_unpaid.hours, pay: money(b.comp.balance.expired_unpaid.amount) }), d.today.slice(0, 7));
+    if (!month) return;
+    try { await api(`/api/admin/comp/${b.employee_id}/payout`, { method: 'POST', body: { month } }); toast(t('Added to the {month} payroll', { month })); refresh(); }
+    catch (e) { toast(e.message, true); }
+  }));
   renderAdminNotif();
 }
 // Seniority like "3 y 5 m" from a start date to today
@@ -389,6 +396,16 @@ function annualBar(a) {
   const pctUsed = a.earned ? Math.min(100, (a.used / a.earned) * 100) : 0;
   const pctPend = a.earned ? Math.min(100 - pctUsed, (a.pending / a.earned) * 100) : 0;
   return `<div class="bal-bar" role="img" aria-label="${t('{used} of {earned} days used', { used: d1(a.used), earned: d1(a.earned) })}"><i style="width:${pctUsed}%"></i><i class="pend" style="width:${pctPend}%"></i></div>`;
+}
+function compCell(b) {
+  const c = b.comp;
+  if (!c || (!c.balance && c.status === 'off')) return '<span class="muted">—</span>';
+  if (!c.balance) return `<span class="muted">${c.status === 'proposed' ? t('waiting for agreement') : c.status === 'declined' ? t('declined') : '—'}</span>`;
+  const x = c.balance;
+  return `<b>${t('{n} h', { n: x.available })}</b>${x.pending ? `<span class="sub">${t('{n} h pending', { n: x.pending })}</span>` : ''}
+    ${x.expiring_soon ? `<span class="sub" style="color:var(--clay)">${t('{n} h expire within a month', { n: x.expiring_soon })}</span>` : ''}
+    ${x.expired_unpaid.hours > 0 ? `<button class="btn btn-sm btn-warn" data-comppay="${b.employee_id}">⚠ ${t('Pay {h} h ({pay})', { h: x.expired_unpaid.hours, pay: money(x.expired_unpaid.amount) })}</button>` : ''}
+    ${c.status !== 'active' ? `<span class="sub">${t('off')}</span>` : ''}`;
 }
 function prevCell(b) {
   const p = b.previous;
@@ -455,7 +472,7 @@ function balanceTable(rows) {
   const today = state.data.today;
   if (!rows.length) return `<div class="card empty">${t('No team members yet.')}</div>`;
   return `<div class="card panel" style="padding:6px"><div class="table-wrap"><table class="tbl bal-table">
-    <thead><tr><th>${t('Employee')}</th><th>${t('Seniority')}</th><th>${t('Annual leave (特休)')}</th><th class="num">${t('Left')}</th><th>${t('Use by')}</th><th>${t('Next grant')}</th><th>${t('Last year')}</th><th class="num">${t('Sick')}</th><th class="num">${t('Personal')}</th><th></th></tr></thead>
+    <thead><tr><th>${t('Employee')}</th><th>${t('Seniority')}</th><th>${t('Annual leave (特休)')}</th><th class="num">${t('Left')}</th><th>${t('Next grant')}</th><th>${t('Last year')}</th><th>補休</th><th class="num">${t('Sick')}</th><th class="num">${t('Personal')}</th><th></th></tr></thead>
     <tbody>${rows.map((b) => {
       const a = b.annual || {};
       const active = a.status === 'active';
@@ -463,12 +480,13 @@ function balanceTable(rows) {
       return `<tr>
         <td><span class="emp">${avatar(b)}<span>${esc(b.name)}${b.ratio < 1 ? `<span class="sub">${t('part-time {pct}%', { pct: Math.round(b.ratio * 100) })}</span>` : ''}</span></span></td>
         <td>${b.start_date ? `${seniority(b.start_date, today)}<span class="sub">${t('since {date}', { date: dateLabel(b.start_date, { year: 'numeric', month: 'short', day: 'numeric' }) })}</span>` : `<button class="btn btn-ghost btn-sm" data-setstart="${b.employee_id}">${t('Set start date')}</button>`}</td>
-        <td style="min-width:170px">${active ? `<span class="sub" style="margin-bottom:2px">${b.leave_system === 'calendar' ? t('Calendar year') : t('Anniversary year')}</span>${annualBar(a)}<span class="sub">${t('{used} used · {pending} pending · {earned} earned', { used: d1(a.used), pending: d1(a.pending), earned: d1(a.earned) })}</span>`
+        <td style="min-width:170px">${active ? `<span class="sub" style="margin-bottom:2px">${b.leave_system === 'calendar' ? t('Calendar year') : t('Anniversary year')}</span>${annualBar(a)}<span class="sub">${t('{used} used · {pending} pending · {earned} earned', { used: d1(a.used), pending: d1(a.pending), earned: d1(a.earned) })}</span>
+          <span class="sub" ${soon ? 'style="color:var(--clay);font-weight:600"' : ''}>${t('use by {date}', { date: dateLabel(a.to, { year: 'numeric', month: 'short', day: 'numeric' }) })}${soon ? ' · ' + t('Unused days must be paid or carried over') : ''}</span>`
           : a.status === 'waiting' ? `<span class="muted">${t('Earns {n} days on {date}', { n: d1(a.next.days), date: dateLabel(a.next.date) })}</span>` : '<span class="muted">—</span>'}</td>
         <td class="num">${active ? `<b style="font-size:16px">${d1(a.remaining)}</b> <span class="muted">${t('days')}</span>${a.carried || a.adjusted ? `<span class="sub">${[a.carried ? t('+{n} carried', { n: d1(a.carried) }) : '', a.adjusted ? t('{n} adjusted', { n: (a.adjusted > 0 ? '+' : '') + d1(a.adjusted) }) : ''].filter(Boolean).join(' · ')}</span>` : ''}` : '—'}</td>
-        <td>${active ? `<span ${soon ? 'style="color:var(--clay);font-weight:600"' : ''}>${dateLabel(a.to, { year: 'numeric', month: 'short', day: 'numeric' })}</span>${soon ? `<span class="sub" style="color:var(--clay)">${t('Unused days must be paid or carried over')}</span>` : ''}` : '—'}</td>
         <td>${a.next ? `${t('+{n} days', { n: d1(a.next.days) })}<span class="sub">${dateLabel(a.next.date, { year: 'numeric', month: 'short', day: 'numeric' })}</span>` : '—'}</td>
         <td>${prevCell(b)}</td>
+        <td>${compCell(b)}</td>
         <td class="num">${d1(b.sick.used)}<span class="sub">/ ${b.sick.limit}</span></td>
         <td class="num">${d1(b.personal.used)}<span class="sub">/ ${b.personal.limit}</span></td>
         <td>${active ? `<button class="btn btn-ghost btn-sm" data-bal="${b.employee_id}">${t('Manage')}</button>` : ''}</td>
@@ -540,7 +558,7 @@ function renderPayroll() {
       <div class="table-wrap"><table class="tbl pay-table">
         <thead><tr><th>${t('Employee')}</th><th class="num">${t('Hours')}</th><th class="num">${t('Overtime')}</th><th class="num">${t('Base')}</th><th class="num">${t('Extras')}</th><th class="num">${t('Deductions')}</th><th class="num">${t('Net')}</th><th></th></tr></thead>
         <tbody>${pr.rows.length ? pr.rows.map((r) => {
-          const extras = r.earnings.overtime + r.earnings.leave + (r.earnings.holiday || 0) + (r.earnings.holiday_work || 0) + (r.earnings.leave_payout || 0) + r.earnings.bonus;
+          const extras = r.earnings.overtime + r.earnings.leave + (r.earnings.holiday || 0) + (r.earnings.holiday_work || 0) + (r.earnings.leave_payout || 0) + (r.earnings.comp_payout || 0) + r.earnings.bonus;
           const warn = [
             r.open_shifts ? t('{n} shift(s) without clock-out', { n: r.open_shifts }) : '',
             r.missing_days.length ? t('{n} work day(s) with no punches', { n: r.missing_days.length }) : '',
@@ -550,9 +568,9 @@ function renderPayroll() {
             <td><span class="emp">${avatar(r)}<span>${esc(r.name)}<span class="sub"><span class="tag ${r.pay_type}">${r.pay_type === 'monthly' ? t('Monthly') : t('Hourly')}</span> ${r.pay_type === 'monthly' ? money(r.salary) : money(r.rate) + '/' + t('h')}</span></span></span>
               ${warn.map((w) => `<span class="warn-line">⚠ ${w}</span>`).join('')}</td>
             <td class="num">${hrsLabel(r.hours.worked)}<span class="sub">${t('{n} days', { n: r.days_worked })}</span></td>
-            <td class="num">${r.hours.ot1 + r.hours.ot2 ? hrsLabel(r.hours.ot1 + r.hours.ot2) : '—'}</td>
+            <td class="num">${r.hours.ot1 + r.hours.ot2 ? hrsLabel(r.hours.ot1 + r.hours.ot2) : '—'}${r.hours.comp ? `<span class="sub">${t('→ 補休 {h}', { h: hrsLabel(r.hours.comp) })}</span>` : ''}</td>
             <td class="num">${money(r.earnings.base)}</td>
-            <td class="num">${extras ? '+' + money(extras) : '—'}${(r.earnings.holiday || 0) + (r.earnings.holiday_work || 0) ? `<span class="sub">${t('holiday')} ${money((r.earnings.holiday || 0) + (r.earnings.holiday_work || 0))}</span>` : ''}${r.earnings.leave_payout ? `<span class="sub">${t('unused 特休')} ${money(r.earnings.leave_payout)}</span>` : ''}${r.earnings.bonus ? `<span class="sub">${t('bonus')} ${money(r.earnings.bonus)}</span>` : ''}</td>
+            <td class="num">${extras ? '+' + money(extras) : '—'}${(r.earnings.holiday || 0) + (r.earnings.holiday_work || 0) ? `<span class="sub">${t('holiday')} ${money((r.earnings.holiday || 0) + (r.earnings.holiday_work || 0))}</span>` : ''}${r.earnings.leave_payout ? `<span class="sub">${t('unused 特休')} ${money(r.earnings.leave_payout)}</span>` : ''}${r.earnings.comp_payout ? `<span class="sub">${t('unused 補休')} ${money(r.earnings.comp_payout)}</span>` : ''}${r.earnings.bonus ? `<span class="sub">${t('bonus')} ${money(r.earnings.bonus)}</span>` : ''}</td>
             <td class="num">${r.total_deductions ? '−' + money(r.total_deductions) : '—'}</td>
             <td class="num"><b>${money(r.net)}</b><span class="sub">${r.status === 'paid' ? `<span class="tag paid">${t('Paid')}</span> ${dateLabel(dayKey(r.paid_at), { month: 'numeric', day: 'numeric' })}` : `<span class="tag draft">${t('Draft')}</span>`}</span></td>
             <td><div class="acts">
@@ -678,7 +696,8 @@ function renderHistory() {
         <h2>2 · ${t('Add past leave')}</h2>
         <p>${t('Record leave someone already took. It is saved as approved and counts in leave balances and payroll.')}</p>
         <div class="field"><label for="pl-emp">${t('Employee')}</label><select class="input" id="pl-emp">${empOptions(first?.id)}</select></div>
-        <div class="field"><label>${t('Type')}</label><select class="input" id="pl-type">${['annual', 'sick', 'personal', 'other'].map((k) => `<option value="${k}">${leaveLabel(k)}</option>`).join('')}</select></div>
+        <div class="field"><label>${t('Type')}</label><select class="input" id="pl-type">${['annual', 'sick', 'personal', 'other', 'comp'].map((k) => `<option value="${k}">${leaveLabel(k)}</option>`).join('')}</select></div>
+        <div class="field hidden" id="pl-hours-wrap"><label for="pl-hours">${t('Hours')}</label><input class="input" type="number" min="0.5" step="0.5" id="pl-hours" value="1" style="max-width:120px"></div>
         <div class="row-2">
           <div class="field"><label for="pl-from">${t('From')}</label><input class="input" type="date" id="pl-from" required></div>
           <div class="field"><label for="pl-to">${t('To')}</label><input class="input" type="date" id="pl-to" required></div>
@@ -734,10 +753,12 @@ function renderHistory() {
   $('#pl-form').onsubmit = async (ev) => {
     ev.preventDefault();
     try {
-      await api('/api/admin/leave', { method: 'POST', body: { employee_id: Number($('#pl-emp').value), type: $('#pl-type').value, start: $('#pl-from').value, end: $('#pl-to').value || $('#pl-from').value, half: $('#pl-half').checked, note: $('#pl-note').value } });
+      const comp = $('#pl-type').value === 'comp';
+      await api('/api/admin/leave', { method: 'POST', body: { employee_id: Number($('#pl-emp').value), type: $('#pl-type').value, start: $('#pl-from').value, end: comp ? $('#pl-from').value : $('#pl-to').value || $('#pl-from').value, half: !comp && $('#pl-half').checked, hours: comp ? Number($('#pl-hours').value) : undefined, note: $('#pl-note').value } });
       toast(t('Leave added')); $('#pl-from').value = ''; $('#pl-to').value = ''; $('#pl-note').value = ''; $('#pl-half').checked = false;
     } catch (e) { toast(e.message, true); }
   };
+  $('#pl-type').onchange = () => { $('#pl-hours-wrap').classList.toggle('hidden', $('#pl-type').value !== 'comp'); };
   $('#pl-from').onchange = () => { if (!$('#pl-to').value || $('#pl-to').value < $('#pl-from').value) $('#pl-to').value = $('#pl-from').value; };
 
   // 3. CSV import
@@ -811,6 +832,8 @@ function renderTeam() {
           return a?.status === 'active' ? `<div class="bal-mini">${annualBar(a)}<span>${t('特休 {left} of {earned} days left · until {date}', { left: d1(a.remaining), earned: d1(a.earned), date: dateLabel(a.to, { month: 'short', day: 'numeric' }) })}</span></div>`
             : e.active && !e.start_date ? `<span class="muted" style="font-size:12.5px">${t('Add a start date to track 特休')}</span>` : ''; })()}
         ${e.start_date ? `<span class="muted" style="font-size:12.5px">${t('Started {date}', { date: dateLabel(e.start_date, { year: 'numeric', month: 'short', day: 'numeric' }) })} · ${seniority(e.start_date, d.today)} · ${e.leave_system === 'calendar' ? t('Calendar year') : t('Anniversary year')}</span>` : ''}
+        ${e.comp_status === 'proposed' ? `<span class="pill st-pending" style="justify-self:start"><span class="dot"></span>${t('補休: waiting for agreement')}</span>`
+          : e.comp_status === 'active' ? `<span class="pill st-approved" style="justify-self:start"><span class="dot"></span>${t('補休: overtime banked')}${(() => { const c = (state.balances || []).find((x) => x.employee_id === e.id)?.comp?.balance; return c ? ' · ' + t('{n} h', { n: c.available }) : ''; })()}</span>` : ''}
         ${e.onShift ? `<span class="pill pill-live" style="justify-self:start"><span class="dot"></span>${t('On shift now')}</span>` : ''}
       </div>`).join('') : `<div class="card empty" style="grid-column:1/-1">${t("No team members yet. Add your first one — they'll appear on the time clock right away.")}</div>`}</div>`;
   $('#tm-add').onclick = () => openEmp();
@@ -825,6 +848,14 @@ function openEmp(e, { focus } = {}) {
   $('#em-leave').value = e ? (e.leave_hours ?? 8) : 8;
   $('#em-salary').value = e ? e.monthly_salary || '' : '';
   $('#em-start').value = e?.start_date || '';
+  const cs = e?.comp_status || 'off';
+  $('#em-comp').checked = cs === 'proposed' || cs === 'active';
+  const compWhen = e?.comp_updated ? dateLabel(dayKey(e.comp_updated), { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+  $('#em-comp-status').innerHTML = !e ? t('After saving, the employee is asked to agree in the app. Nothing changes until they agree.')
+    : cs === 'proposed' ? `⏳ ${t('Waiting for {name} to agree (asked {date}).', { name: esc(e.name), date: compWhen })}`
+    : cs === 'active' ? `✓ ${t('{name} agreed on {date}. Overtime is banked as 補休, not paid.', { name: esc(e.name), date: compWhen })}`
+    : cs === 'declined' ? `✗ ${t('{name} declined on {date}. Tick again to ask again.', { name: esc(e.name), date: compWhen })}`
+    : t('When ticked, {name} is asked to agree in the app. Nothing changes until they agree.', { name: esc(e.name) });
   let lsys = e?.leave_system || 'anniversary';
   const paintSys = () => { $('#em-lsys').innerHTML = ['anniversary', 'calendar'].map((k) => `<button type="button" role="radio" aria-checked="${k === lsys}" data-ls="${k}">${t(k === 'anniversary' ? '週年制 Anniversary' : '曆年制 Calendar')}</button>`).join(''); };
   $('#em-lsys').onclick = (ev) => { const b = ev.target.closest('[data-ls]'); if (b) { lsys = b.dataset.ls; paintSys(); } };
@@ -852,12 +883,15 @@ function openEmp(e, { focus } = {}) {
     if (ev.submitter?.value !== 'save') return;
     ev.preventDefault();
     const body = { name: $('#em-name').value, role: $('#em-role').value, hourly_rate: Number($('#em-rate').value) || 0, leave_hours: Number($('#em-leave').value), pin: $('#em-pin').value,
-      start_date: $('#em-start').value, leave_system: lsys, pay_type: payType, monthly_salary: Number($('#em-salary').value) || 0, daily_hours: Number($('#em-daily').value) || 8, insurance: Number($('#em-ins').value) || 0,
+      start_date: $('#em-start').value, leave_system: lsys, comp_time: $('#em-comp').checked, pay_type: payType, monthly_salary: Number($('#em-salary').value) || 0, daily_hours: Number($('#em-daily').value) || 8, insurance: Number($('#em-ins').value) || 0,
       work_days: [...$('#em-days').querySelectorAll('input:checked')].map((i) => i.value).join(',') };
     if (e) body.active = $('#em-active').checked;
     try {
       await api(e ? `/api/admin/employees/${e.id}` : '/api/admin/employees', { method: e ? 'PATCH' : 'POST', body });
-      dlg.close(); toast(e ? t('Saved') : t('{name} added — they can sign in now', { name: body.name })); refresh();
+      dlg.close();
+      const askedComp = body.comp_time && !['proposed', 'active'].includes(e?.comp_status || 'off');
+      toast(askedComp ? t('Saved — {name} has been asked to agree to 補休', { name: body.name }) : e ? t('Saved') : t('{name} added — they can sign in now', { name: body.name }));
+      refresh();
     } catch (err) { $('#em-err').textContent = err.message; }
   };
   dlg.showModal();
@@ -895,6 +929,7 @@ function renderSettings() {
           <div class="field"><label for="pc-r2">${t('Rate after')}</label><input class="input" type="number" min="1" max="3" step="0.01" id="pc-r2" value="${d.payroll?.ot_rate2 ?? 1.67}"></div>
         </div>
         <div class="field"><label for="pc-div">${t('Monthly salary ÷ hours = hourly value')}</label><input class="input" type="number" min="1" max="400" step="1" id="pc-div" value="${d.payroll?.divisor ?? 240}" style="max-width:120px"></div>
+        <div class="field"><label for="pc-cexp">${t('補休 must be used within (months)')}</label><input class="input" type="number" min="1" max="24" step="1" id="pc-cexp" value="${d.payroll?.comp_expiry_months ?? 6}" style="max-width:120px"></div>
         <label class="check"><input type="checkbox" id="pc-hfull" ${d.payroll?.holiday_full_day !== false ? 'checked' : ''}> ${t('Working on a holiday earns a full extra day (even for fewer hours)')}</label>
         <label class="check"><input type="checkbox" id="pc-hpay" ${d.payroll?.holiday_pay_hourly !== false ? 'checked' : ''}> ${t('Pay hourly staff for holidays on their work days')}</label>
         <button class="btn btn-primary" style="justify-self:start">${t('Save')}</button>
@@ -914,7 +949,7 @@ function renderSettings() {
   renderHolidays(Number(state.holYear || d.today.slice(0, 4)));
   $('#f-payroll').onsubmit = (ev) => {
     ev.preventDefault();
-    const payroll = { ot_auto: $('#pc-auto').checked, ot_rate1: Number($('#pc-r1').value), ot_tier: Number($('#pc-tier').value), ot_rate2: Number($('#pc-r2').value), divisor: Number($('#pc-div').value), holiday_full_day: $('#pc-hfull').checked, holiday_pay_hourly: $('#pc-hpay').checked };
+    const payroll = { ot_auto: $('#pc-auto').checked, ot_rate1: Number($('#pc-r1').value), ot_tier: Number($('#pc-tier').value), ot_rate2: Number($('#pc-r2').value), divisor: Number($('#pc-div').value), holiday_full_day: $('#pc-hfull').checked, holiday_pay_hourly: $('#pc-hpay').checked, comp_expiry_months: Number($('#pc-cexp').value) };
     api('/api/admin/settings', { method: 'POST', body: { payroll } }).then(() => { toast(t('Settings saved')); refresh(); }, (e) => toast(e.message, true));
   };
   $('#f-leavepay').onsubmit = async (ev) => {
