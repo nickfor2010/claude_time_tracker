@@ -745,6 +745,82 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         return json(200, { ok: true });
       }
 
+      // ---------- history: import, standard schedule, manager-entered leave ----------
+      if (p === '/api/admin/import/shifts' && m === 'POST') {
+        const { rows, dry_run } = await readBody(req);
+        if (!Array.isArray(rows) || !rows.length) throw new HttpError(400, 'Nothing to import');
+        if (rows.length > 1000) throw new HttpError(400, 'Send at most 1000 rows at a time');
+        const emps = new Map((await db.all('SELECT id FROM employees')).map((e) => [e.id, e]));
+        const results = [], toInsert = [];
+        // existing shifts of these employees in the date range, to skip duplicates
+        const dates = rows.map((r) => r.date).filter(isDate).sort();
+        const existing = dates.length ? await db.all('SELECT employee_id, clock_in FROM shifts WHERE clock_in >= ? AND clock_in < ?',
+          [zonedToMs(dates[0]), zonedToMs(addDays(dates[dates.length - 1], 2))]) : [];
+        const seen = new Set(existing.map((x) => `${x.employee_id}|${x.clock_in}`));
+        for (const r of rows) {
+          try {
+            if (!emps.has(Number(r.employee_id))) throw new HttpError(400, 'Unknown employee');
+            const { cin, cout } = parseShiftTimes({ date: r.date, in: r.in, out: r.out });
+            if (!cout) throw new HttpError(400, 'Clock-out time is missing');
+            if (cout - cin > 24 * 3600e3) throw new HttpError(400, 'Shift longer than 24 hours');
+            const key = `${Number(r.employee_id)}|${cin}`;
+            if (seen.has(key)) { results.push({ status: 'duplicate' }); continue; }
+            seen.add(key);
+            const brk = Math.max(0, Math.min(600, Number(r.break_min) || 0));
+            toInsert.push([Number(r.employee_id), cin, cout, brk, String(r.note || '').slice(0, 200)]);
+            results.push({ status: 'ok' });
+          } catch (e) { results.push({ status: 'error', error: e.message }); }
+        }
+        if (!dry_run) await db.runMany('INSERT INTO shifts(employee_id, clock_in, clock_out, break_min, note, edited) VALUES(?, ?, ?, ?, ?, 1)', toInsert);
+        return json(200, { results, imported: dry_run ? 0 : toInsert.length, ready: toInsert.length });
+      }
+      if (p === '/api/admin/backfill' && m === 'POST') {
+        const b = await readBody(req);
+        const emp = await db.get('SELECT * FROM employees WHERE id = ?', [Number(b.employee_id) || 0]);
+        if (!emp) throw new HttpError(400, 'Choose an employee');
+        if (!isDate(b.from) || !isDate(b.to) || b.to < b.from) throw new HttpError(400, 'Choose the dates');
+        if (b.to > dayKey(Date.now())) throw new HttpError(400, 'The schedule can only be filled up to today');
+        if (Date.parse(b.to) - Date.parse(b.from) > 8 * 366 * 86400e3) throw new HttpError(400, 'Fill at most 8 years at a time');
+        if (!isTime(b.in) || !isTime(b.out)) throw new HttpError(400, 'Date and clock-in time are required');
+        const wd = workDaySet(emp);
+        const [hol, leave, existing] = await Promise.all([
+          b.skip_holidays === false ? new Set() : db.all('SELECT date FROM holidays WHERE date >= ? AND date <= ?', [b.from, b.to]).then((r) => new Set(r.map((x) => x.date))),
+          db.all("SELECT * FROM leave_requests WHERE employee_id = ? AND status = 'approved' AND start_date <= ? AND end_date >= ?", [emp.id, b.to, b.from]),
+          db.all('SELECT clock_in FROM shifts WHERE employee_id = ? AND clock_in >= ? AND clock_in < ?', [emp.id, zonedToMs(b.from), zonedToMs(addDays(b.to, 1))]),
+        ]);
+        const worked = new Set(existing.map((x) => dayKey(x.clock_in)));
+        const onLeave = (d) => leave.some((l) => l.start_date <= d && l.end_date >= d && !l.half_day);
+        const rows = [];
+        let skipped = { off: 0, holiday: 0, leave: 0, existing: 0 };
+        for (let d = b.from; d <= b.to; d = addDays(d, 1)) {
+          if (!wd.has(wdOf(d))) { skipped.off++; continue; }
+          if (hol.has(d)) { skipped.holiday++; continue; }
+          if (onLeave(d)) { skipped.leave++; continue; }
+          if (worked.has(d)) { skipped.existing++; continue; }
+          const { cin, cout } = parseShiftTimes({ date: d, in: b.in, out: b.out });
+          rows.push([emp.id, cin, cout, Math.max(0, Number(b.break_min) || 0), String(b.note || 'Standard schedule').slice(0, 200)]);
+        }
+        if (!b.dry_run) {
+          for (let i = 0; i < rows.length; i += 200) await db.runMany('INSERT INTO shifts(employee_id, clock_in, clock_out, break_min, note, edited) VALUES(?, ?, ?, ?, ?, 1)', rows.slice(i, i + 200));
+        }
+        const holidayYears = (await db.all("SELECT DISTINCT substr(date, 1, 4) AS y FROM holidays")).map((x) => x.y);
+        const years = []; for (let y = Number(b.from.slice(0, 4)); y <= Number(b.to.slice(0, 4)); y++) years.push(String(y));
+        return json(200, { days: rows.length, created: b.dry_run ? 0 : rows.length, skipped, years_without_holidays: years.filter((y) => !holidayYears.includes(y)) });
+      }
+      if (p === '/api/admin/leave' && m === 'POST') {
+        const b = await readBody(req);
+        const emp = await db.get('SELECT * FROM employees WHERE id = ?', [Number(b.employee_id) || 0]);
+        if (!emp) throw new HttpError(400, 'Choose an employee');
+        if (!LEAVE_TYPES.includes(b.type)) throw new HttpError(400, 'Choose a type of leave');
+        if (!isDate(b.start) || !isDate(b.end)) throw new HttpError(400, 'Choose the dates');
+        if (b.end < b.start) throw new HttpError(400, 'The end date is before the start date');
+        if (leaveDays({ start_date: b.start, end_date: b.end }) > 60) throw new HttpError(400, 'A request can be at most 60 days');
+        const now = Date.now();
+        await db.run("INSERT INTO leave_requests(employee_id, type, start_date, end_date, half_day, note, status, manager_note, created_at, decided_at, seen) VALUES(?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, 1)",
+          [emp.id, b.type, b.start, b.end, b.half && b.start === b.end ? 1 : 0, String(b.note || '').slice(0, 300), 'Added by manager', now, now]);
+        return json(201, { ok: true });
+      }
+
       const isMonth = (x) => typeof x === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(x);
       if (p === '/api/admin/payroll' && m === 'GET') {
         const month = url.searchParams.get('month');

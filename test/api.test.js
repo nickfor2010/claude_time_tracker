@@ -207,6 +207,40 @@ test('full punch flow', async () => {
   assert.deepEqual([vb2.leave_system, vb2.annual.from, vb2.annual.to], ['calendar', '2026-01-01', '2026-12-31']);
   await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { leave_system: 'anniversary' } });
 
+  // History: manager-entered leave, standard schedule fill, CSV import
+  const hist = (await admin('/api/admin/employees', { method: 'POST', body: { name: 'Mei', pin: '1111', pay_type: 'monthly', monthly_salary: 40000, start_date: '2020-03-02', work_days: '1,2,3,4,5' } })).data;
+  assert.equal((await admin('/api/admin/leave', { method: 'POST', body: { employee_id: hist.id, type: 'annual', start: '2025-08-04', end: '2025-08-08' } })).status, 201);
+  // Aug 2025: 21 weekdays, 5 on leave -> 16 shifts (no 2025 holidays loaded); preview first
+  let bf = (await admin('/api/admin/backfill', { method: 'POST', body: { employee_id: hist.id, from: '2025-08-01', to: '2025-08-31', in: '09:00', out: '18:00', break_min: 60, dry_run: true } })).data;
+  assert.deepEqual([bf.days, bf.created, bf.skipped.leave, bf.skipped.off], [16, 0, 5, 10]);
+  assert.deepEqual(bf.years_without_holidays, ['2025']);
+  bf = (await admin('/api/admin/backfill', { method: 'POST', body: { employee_id: hist.id, from: '2025-08-01', to: '2025-08-31', in: '09:00', out: '18:00', break_min: 60 } })).data;
+  assert.equal(bf.created, 16);
+  // running it again creates nothing (days already have shifts)
+  assert.equal((await admin('/api/admin/backfill', { method: 'POST', body: { employee_id: hist.id, from: '2025-08-01', to: '2025-08-31', in: '09:00', out: '18:00' } })).data.created, 0);
+  // 2026-12-25 is a holiday and is skipped; future dates are refused
+  assert.equal((await admin('/api/admin/backfill', { method: 'POST', body: { employee_id: hist.id, from: '2025-08-01', to: '2099-01-01', in: '09:00', out: '18:00' } })).status, 400);
+  const augHours = (await admin('/api/admin/payroll?month=2025-08')).data.rows.find((r) => r.employee_id === hist.id).hours.worked;
+  assert.equal(augHours, 16 * 8);
+  // CSV import rows (already parsed by the browser): ok, duplicate, unknown employee, overnight, bad time
+  const imp = { rows: [
+    { employee_id: hist.id, date: '2025-09-01', in: '09:00', out: '17:30', break_min: 30, note: 'old system' },
+    { employee_id: hist.id, date: '2025-09-01', in: '09:00', out: '17:30' },
+    { employee_id: 999999, date: '2025-09-02', in: '09:00', out: '17:00' },
+    { employee_id: hist.id, date: '2025-09-03', in: '22:00', out: '06:00' },
+    { employee_id: hist.id, date: '2025-09-04', in: '9am', out: '17:00' },
+  ] };
+  let ir = (await admin('/api/admin/import/shifts', { method: 'POST', body: { ...imp, dry_run: true } })).data;
+  assert.deepEqual(ir.results.map((x) => x.status), ['ok', 'duplicate', 'error', 'ok', 'error']);
+  assert.equal(ir.imported, 0);
+  ir = (await admin('/api/admin/import/shifts', { method: 'POST', body: imp })).data;
+  assert.equal(ir.imported, 2);
+  ir = (await admin('/api/admin/import/shifts', { method: 'POST', body: imp })).data;
+  assert.equal(ir.imported, 0); // second import: everything is a duplicate
+  const sep = (await admin(`/api/admin/shifts?from=2025-09-01&to=2025-09-30&employee=${hist.id}`)).data.shifts;
+  assert.equal(sep.length, 2);
+  assert.equal(sep.find((x) => x.day === '2025-09-03').clock_out - sep.find((x) => x.day === '2025-09-03').clock_in, 8 * 3600e3);
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

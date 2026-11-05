@@ -14,5 +14,10 @@ export function openNodeDb(dataDir) {
     get: async (sql, params = []) => db.prepare(sql).get(...norm(params)) ?? null,
     run: async (sql, params = []) => ({ lastId: Number(db.prepare(sql).run(...norm(params)).lastInsertRowid) }),
     batch: async (sqls) => { for (const s of sqls) db.exec(s); },
+    runMany: async (sql, rows) => {
+      const st = db.prepare(sql);
+      db.exec('BEGIN');
+      try { for (const params of rows) st.run(...norm(params)); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
+    },
   };
 }

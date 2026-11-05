@@ -7,6 +7,8 @@ const d1 = (DB) => ({
   get: async (sql, params = []) => (await DB.prepare(sql).bind(...params.map((v) => v ?? null)).first()) ?? null,
   run: async (sql, params = []) => ({ lastId: (await DB.prepare(sql).bind(...params.map((v) => v ?? null)).run()).meta.last_row_id }),
   batch: (sqls) => DB.batch(sqls.map((s) => DB.prepare(s))),
+  // Runs one statement for many parameter sets in a single round trip
+  runMany: (sql, rows) => (rows.length ? DB.batch(rows.map((params) => DB.prepare(sql).bind(...params.map((v) => v ?? null)))) : Promise.resolve([])),
 });
 
 let app;

@@ -1,5 +1,6 @@
 import { api, icons, esc, avatar, time, hm24, dur, hours, money, dayKey, dateLabel, worked, toast, setTimezone, clockNow, registerSW, pushStatus, enablePush, syncPush, leaveLabel, leaveRange, statusPill } from './common.js';
 import { t, translatePage, langButton, isZh } from './i18n.js';
+import { parseCSV, buildImport, TEMPLATE } from './csv-import.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const PAGES = [
@@ -9,6 +10,7 @@ const PAGES = [
   { id: 'payroll', label: 'Payroll', icon: 'coins' },
   { id: 'team', label: 'Team', icon: 'users' },
   { id: 'settings', label: 'Settings', icon: 'gear' },
+  { id: 'history', label: 'History & import', icon: 'download', hidden: true },
 ];
 let state = { page: 'overview', data: null, month: null, empFilter: '', shifts: [], leave: [] };
 let liveTimer;
@@ -47,7 +49,7 @@ document.querySelectorAll('[data-icon]').forEach((b) => b.insertAdjacentHTML('af
 
 function buildNav() {
   const pending = state.data?.pendingLeave || 0;
-  const html = PAGES.map((p) => `<button data-page="${p.id}" class="${p.id === state.page ? 'active' : ''}">${icons[p.icon]}<span>${t(p.label)}</span>${p.id === 'timeoff' && pending ? `<span class="badge" aria-label="${t('{n} waiting', { n: pending })}">${pending}</span>` : ''}</button>`).join('');
+  const html = PAGES.filter((p) => !p.hidden).map((p) => `<button data-page="${p.id}" class="${p.id === state.page ? 'active' : ''}">${icons[p.icon]}<span>${t(p.label)}</span>${p.id === 'timeoff' && pending ? `<span class="badge" aria-label="${t('{n} waiting', { n: pending })}">${pending}</span>` : ''}</button>`).join('');
   $('#nav').innerHTML = html;
   $('#mnav').innerHTML = html;
   [$('#nav'), $('#mnav')].forEach((n) => (n.onclick = (ev) => { const b = ev.target.closest('button'); if (b) go(b.dataset.page); }));
@@ -56,7 +58,7 @@ async function go(page) {
   if (!PAGES.some((p) => p.id === page)) page = 'overview';
   state.page = page;
   if (location.hash.slice(1) !== page) history.replaceState(null, '', '#' + page);
-  document.querySelectorAll('[data-page]').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
+  document.querySelectorAll('[data-page]').forEach((b) => b.classList.toggle('active', b.dataset.page === (page === 'history' ? 'timesheets' : page)));
   await refresh();
   scrollTo({ top: 0 });
 }
@@ -89,7 +91,7 @@ function render() {
     ? `<div class="banner">${icons.alert}<span>${t("You're using the default admin password. Please change it.")}</span><button class="btn btn-sm btn-ghost" data-goto="settings">${t('Change now')}</button></div>` : '');
   $('#banner').querySelectorAll('[data-fix]').forEach((b) => (b.onclick = () => openShift(d.onShift.find((s) => s.id === Number(b.dataset.fix)), { forgot: true })));
   $('#side-live').innerHTML = `${t('<b>{n}</b> of {total} on shift now', { n: d.onShift.length, total: d.employees.filter((e) => e.active).length })}<br>${dateLabel(d.today, { weekday: 'long', month: 'long', day: 'numeric' })}`;
-  ({ overview: renderOverview, timesheets: renderTimesheets, timeoff: renderTimeoff, payroll: renderPayroll, team: renderTeam, settings: renderSettings })[state.page]();
+  ({ overview: renderOverview, timesheets: renderTimesheets, timeoff: renderTimeoff, payroll: renderPayroll, team: renderTeam, settings: renderSettings, history: renderHistory })[state.page]();
   clearInterval(liveTimer);
   liveTimer = setInterval(tickLive, 1000);
 }
@@ -255,6 +257,7 @@ function renderTimesheets() {
         <input class="input" type="month" id="ts-month" value="${state.month}" aria-label="${t('Month')}">
         <select class="input" id="ts-emp" aria-label="${t('Employee')}"><option value="">${t('Everyone')}</option>${d.employees.map((e) => `<option value="${e.id}" ${String(e.id) === String(state.empFilter) ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>
         <a class="btn btn-ghost" href="/api/admin/export.csv?from=${from}&to=${to}${state.empFilter ? `&employee=${state.empFilter}` : ''}&lang=${isZh() ? 'zh' : 'en'}">${icons.download} ${t('Export CSV')}</a>
+        <button class="btn btn-ghost" data-goto="history">${icons.download} ${t('History & import')}</button>
         <button class="btn btn-primary" id="ts-add">${icons.plus} ${t('Add shift')}</button>
       </div>
     </div>
@@ -337,7 +340,8 @@ function renderTimeoff() {
   const history = all.filter((r) => !pending.includes(r) && !upcoming.includes(r));
   const ago = (ms) => dateLabel(dayKey(ms)) + ' ' + time(ms);
   $('#page').innerHTML = `
-    <div class="page-head"><div><h1>${t('Time off')}</h1><p>${t('Requests from your team. Approve or decline — they get notified right away.')}</p></div></div>
+    <div class="page-head"><div><h1>${t('Time off')}</h1><p>${t('Requests from your team. Approve or decline — they get notified right away.')}</p></div>
+      <div class="toolbar"><button class="btn btn-ghost" data-goto="history">${icons.plus} ${t('Add past leave')}</button></div></div>
     <div class="card notif-card" id="admin-notif" style="margin:0 0 18px"></div>
     <div class="section-title">${t('Waiting for you')} (${pending.length})</div>
     <div class="req-cards">${pending.length ? pending.map((r) => `
@@ -632,6 +636,162 @@ async function renderHolidays(year) {
     catch (e) { toast(e.message, true); }
   };
   $('#hol-restore').onclick = async () => { await api('/api/admin/holidays/restore', { method: 'POST', body: { year } }); toast(t('Official holidays restored')); renderHolidays(year); };
+}
+
+// ---------- history & import ----------
+function empOptions(sel = '') {
+  return state.data.employees.map((e) => `<option value="${e.id}" ${String(e.id) === String(sel) ? 'selected' : ''}>${esc(e.name)}${e.active ? '' : ' (' + t('inactive') + ')'}</option>`).join('');
+}
+let importState = null;
+// Row errors from the CSV reader carry the bad value in quotes, e.g. Bad date "2025/10/32"
+function importError(msg) {
+  const m = String(msg).match(/^(Unknown employee|Bad date|Bad clock-in time|Bad clock-out time) "(.*)"$/);
+  return m ? t(`${m[1]} "{v}"`, { v: m[2] }) : t(msg);
+}
+function renderHistory() {
+  const d = state.data;
+  const first = d.employees.find((e) => e.pay_type === 'monthly') || d.employees[0];
+  const yesterday = new Date(Date.parse(d.today + 'T00:00:00Z') - 86400e3).toISOString().slice(0, 10);
+  $('#page').innerHTML = `
+    <div class="page-head"><div><h1>${t('History & import')}</h1><p>${t('Fill in the past for people who never punched in, add leave they took, or import shifts from another system.')}</p></div>
+      <div class="toolbar"><button class="btn btn-ghost" data-goto="timesheets">← ${t('Timesheets')}</button></div></div>
+    <div class="hist-grid">
+      <form class="card hist-card" id="bf-form">
+        <h2>1 · ${t('Fill standard schedule')}</h2>
+        <p>${t('Creates a shift on every scheduled work day in the period, skipping days off, national holidays, approved leave and days that already have a shift.')}</p>
+        <div class="field"><label for="bf-emp">${t('Employee')}</label><select class="input" id="bf-emp">${empOptions(first?.id)}</select></div>
+        <div class="row-2">
+          <div class="field"><label for="bf-from">${t('From')}</label><input class="input" type="date" id="bf-from" required></div>
+          <div class="field"><label for="bf-to">${t('To')}</label><input class="input" type="date" id="bf-to" max="${d.today}" value="${yesterday}" required></div>
+        </div>
+        <div class="row-3">
+          <div class="field"><label for="bf-in">${t('Clock in')}</label><input class="input" type="time" id="bf-in" value="09:00" required></div>
+          <div class="field"><label for="bf-out">${t('Clock out')}</label><input class="input" type="time" id="bf-out" value="18:00" required></div>
+          <div class="field"><label for="bf-break">${t('Break (min)')}</label><input class="input" type="number" min="0" step="5" id="bf-break" value="60"></div>
+        </div>
+        <p class="muted" id="bf-days" style="margin:0;font-size:12.5px"></p>
+        <div class="hist-result" id="bf-result"></div>
+        <div class="settle-acts"><button class="btn btn-ghost" value="preview">${t('Preview')}</button><button class="btn btn-primary hidden" id="bf-go" value="create"></button></div>
+      </form>
+
+      <form class="card hist-card" id="pl-form">
+        <h2>2 · ${t('Add past leave')}</h2>
+        <p>${t('Record leave someone already took. It is saved as approved and counts in leave balances and payroll.')}</p>
+        <div class="field"><label for="pl-emp">${t('Employee')}</label><select class="input" id="pl-emp">${empOptions(first?.id)}</select></div>
+        <div class="field"><label>${t('Type')}</label><select class="input" id="pl-type">${['annual', 'sick', 'personal', 'other'].map((k) => `<option value="${k}">${leaveLabel(k)}</option>`).join('')}</select></div>
+        <div class="row-2">
+          <div class="field"><label for="pl-from">${t('From')}</label><input class="input" type="date" id="pl-from" required></div>
+          <div class="field"><label for="pl-to">${t('To')}</label><input class="input" type="date" id="pl-to" required></div>
+        </div>
+        <label class="check"><input type="checkbox" id="pl-half"> ${t('Half day only')}</label>
+        <div class="field"><label for="pl-note">${t('Note')}</label><input class="input" id="pl-note" maxlength="300"></div>
+        <button class="btn btn-primary" style="justify-self:start">${icons.plus} ${t('Add leave')}</button>
+        <p class="muted" style="margin:0;font-size:12.5px">${t('Tip: add past leave before filling the schedule, so those days are skipped.')}</p>
+      </form>
+
+      <div class="card hist-card hist-wide">
+        <h2>3 · ${t('Import from another system (CSV)')}</h2>
+        <p>${t('Export your old records from Excel, Google Sheets or the old app as CSV. Recognised columns (English or Chinese): Employee, Date, Clock in, Clock out, Break, Hours, Note. Rows like TOTAL are ignored.')}</p>
+        <div class="row-3">
+          <div class="field"><label for="im-file">${t('CSV file')}</label><input class="input" type="file" id="im-file" accept=".csv,text/csv,text/plain"></div>
+          <div class="field"><label for="im-emp">${t('Employee (if the file has no employee column)')}</label><select class="input" id="im-emp"><option value="">—</option>${empOptions()}</select></div>
+          <div class="field"><label for="im-break">${t('Break column is in')}</label><select class="input" id="im-break"><option value="min">${t('minutes')}</option><option value="h">${t('hours')}</option></select></div>
+        </div>
+        <a class="muted" style="font-size:12.5px" download="parsley-import-example.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}">${icons.download.replace('<svg', '<svg width="13" height="13" style="vertical-align:-2px"')} ${t('Download an example file')}</a>
+        <div id="im-preview"></div>
+      </div>
+    </div>`;
+
+  // 1. standard schedule
+  const empById = (id) => d.employees.find((e) => e.id === Number(id));
+  const syncBf = () => {
+    const e = empById($('#bf-emp').value);
+    if (e?.start_date && !$('#bf-from').dataset.touched) $('#bf-from').value = e.start_date;
+    $('#bf-days').textContent = e ? t('Work days: {days} (change them in Team)', { days: workDaysLabel(e.work_days) }) : '';
+    $('#bf-result').innerHTML = ''; $('#bf-go').classList.add('hidden');
+  };
+  $('#bf-emp').onchange = () => { $('#bf-from').dataset.touched = ''; syncBf(); };
+  ['bf-from', 'bf-to', 'bf-in', 'bf-out', 'bf-break'].forEach((id) => ($('#' + id).oninput = () => { if (id === 'bf-from') $('#bf-from').dataset.touched = '1'; $('#bf-result').innerHTML = ''; $('#bf-go').classList.add('hidden'); }));
+  syncBf();
+  $('#bf-form').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const create = ev.submitter?.value === 'create';
+    const body = { employee_id: Number($('#bf-emp').value), from: $('#bf-from').value, to: $('#bf-to').value, in: $('#bf-in').value, out: $('#bf-out').value, break_min: Number($('#bf-break').value) || 0, dry_run: !create };
+    if (create && !confirm(t('Create {n} shifts for {name}?', { n: $('#bf-go').dataset.n, name: empById(body.employee_id).name }))) return;
+    try {
+      const r = await api('/api/admin/backfill', { method: 'POST', body });
+      if (create) { toast(t('{n} shifts created', { n: r.created })); $('#bf-result').innerHTML = `<div class="ok-line">✓ ${t('{n} shifts created', { n: r.created })}</div>`; $('#bf-go').classList.add('hidden'); return; }
+      $('#bf-result').innerHTML = `<div class="ok-line">${t('Will create {n} shifts.', { n: r.days })}</div>
+        <div class="muted" style="font-size:12.5px">${t('Skipped: {off} days off, {hol} holidays, {leave} leave days, {ex} days that already have a shift.', { off: r.skipped.off, hol: r.skipped.holiday, leave: r.skipped.leave, ex: r.skipped.existing })}</div>
+        ${r.years_without_holidays.length ? `<div class="warn-line" style="max-width:none">⚠ ${t('No national holidays are loaded for {years}, so those holidays would be filled as work days. Add them first in Settings → National holidays if you want them skipped.', { years: r.years_without_holidays.join(', ') })}</div>` : ''}`;
+      $('#bf-go').dataset.n = r.days;
+      $('#bf-go').textContent = t('Create {n} shifts', { n: r.days });
+      $('#bf-go').classList.toggle('hidden', !r.days);
+    } catch (e) { toast(e.message, true); }
+  };
+
+  // 2. past leave
+  $('#pl-form').onsubmit = async (ev) => {
+    ev.preventDefault();
+    try {
+      await api('/api/admin/leave', { method: 'POST', body: { employee_id: Number($('#pl-emp').value), type: $('#pl-type').value, start: $('#pl-from').value, end: $('#pl-to').value || $('#pl-from').value, half: $('#pl-half').checked, note: $('#pl-note').value } });
+      toast(t('Leave added')); $('#pl-from').value = ''; $('#pl-to').value = ''; $('#pl-note').value = ''; $('#pl-half').checked = false;
+    } catch (e) { toast(e.message, true); }
+  };
+  $('#pl-from').onchange = () => { if (!$('#pl-to').value || $('#pl-to').value < $('#pl-from').value) $('#pl-to').value = $('#pl-from').value; };
+
+  // 3. CSV import
+  const reparse = async () => {
+    if (!importState?.rows) return;
+    const built = buildImport(importState.rows, d.employees, { employeeId: Number($('#im-emp').value) || null, breakUnit: $('#im-break').value });
+    importState.built = built;
+    const good = built.items.filter((x) => x.row);
+    let check = { results: [] };
+    try { if (good.length) check = await api('/api/admin/import/shifts', { method: 'POST', body: { rows: good.slice(0, 1000).map((x) => x.row), dry_run: true } }); }
+    catch (e) { toast(e.message, true); }
+    good.slice(0, 1000).forEach((x, i) => { const r = check.results[i]; if (r?.status === 'duplicate') x.dup = true; else if (r?.status === 'error') x.error = r.error; });
+    const ready = built.items.filter((x) => x.row && !x.error && !x.dup);
+    const errs = built.items.filter((x) => x.error), dups = built.items.filter((x) => x.dup);
+    const name = (id) => empById(id)?.name || '?';
+    const missing = ['date', 'in', 'out'].filter((k) => built.columns[k] < 0);
+    $('#im-preview').innerHTML = `
+      <div class="im-summary">
+        <span class="tag paid">✓ ${t('{n} ready', { n: ready.length })}</span>
+        ${dups.length ? `<span class="tag">${t('{n} already imported', { n: dups.length })}</span>` : ''}
+        ${errs.length ? `<span class="tag warn">⚠ ${t('{n} with problems', { n: errs.length })}</span>` : ''}
+        ${built.columns.employee < 0 ? `<span class="muted">${t('No employee column: all rows go to the employee chosen above.')}</span>` : ''}
+        ${missing.length && built.columns.hours < 0 ? `<span class="warn-line" style="max-width:none">${t('Columns not found: {cols}', { cols: missing.join(', ') })}</span>` : ''}
+      </div>
+      <div class="table-wrap im-table"><table class="tbl"><thead><tr><th>#</th><th>${t('Employee')}</th><th>${t('Date')}</th><th>${t('In')}</th><th>${t('Out')}</th><th class="num">${t('Break')}</th><th>${t('Note')}</th><th>${t('Status')}</th></tr></thead><tbody>
+        ${built.items.slice(0, 300).map((x) => `<tr class="${x.error ? 'im-err' : x.dup ? 'im-dup' : ''}"><td class="muted">${x.line}</td>
+          ${x.row ? `<td>${esc(name(x.row.employee_id))}</td><td>${x.row.date}</td><td>${x.row.in}</td><td>${x.row.out}</td><td class="num">${x.row.break_min || '—'}</td><td class="muted">${esc(x.row.note)}</td>` : `<td colspan="6" class="muted">${esc(x.raw.join(' · '))}</td>`}
+          <td>${x.error ? `<span class="warn-line">${esc(importError(x.error))}</span>` : x.dup ? `<span class="muted">${t('already imported')}</span>` : '✓'}</td></tr>`).join('')}
+      </tbody></table></div>
+      ${built.items.length > 300 ? `<p class="muted" style="font-size:12.5px">${t('Showing the first 300 of {n} rows.', { n: built.items.length })}</p>` : ''}
+      ${ready.length ? `<button class="btn btn-primary" id="im-go">${t('Import {n} shifts', { n: ready.length })}</button>` : ''}`;
+    const go = $('#im-go');
+    if (go) go.onclick = async () => {
+      go.disabled = true;
+      let total = 0;
+      try {
+        const rows = ready.map((x) => x.row);
+        for (let i = 0; i < rows.length; i += 500) {
+          go.textContent = t('Importing… {n}%', { n: Math.round((i / rows.length) * 100) });
+          total += (await api('/api/admin/import/shifts', { method: 'POST', body: { rows: rows.slice(i, i + 500) } })).imported;
+        }
+        toast(t('{n} shifts imported', { n: total }));
+        reparse();
+      } catch (e) { toast(e.message, true); go.disabled = false; }
+    };
+  };
+  $('#im-file').onchange = async (ev) => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    importState = { rows: parseCSV(await f.text()) };
+    reparse();
+  };
+  $('#im-emp').onchange = reparse;
+  $('#im-break').onchange = reparse;
 }
 
 // ---------- team ----------

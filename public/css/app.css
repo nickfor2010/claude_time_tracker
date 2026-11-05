@@ -368,7 +368,8 @@ textarea.input { resize: vertical; min-height: 64px; }
 .req .acts .btn { flex: 1; }
 .btn-approve { background: #1e7b3c; color: #fff; }
 .btn-approve:hover { background: #18692f; }
-.mobile-nav { grid-template-columns: repeat(5, 1fr) !important; }
+.mobile-nav { grid-template-columns: repeat(6, 1fr) !important; }
+.mobile-nav button span { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 /* keep dialog forms inside narrow phone screens (date inputs have a wide intrinsic size) */
 dialog form > *, .row-2 > *, .row-3 > *, .field { min-width: 0; }
@@ -442,3 +443,21 @@ dialog { overflow-x: hidden; }
 .btn-warn { background: color-mix(in srgb, var(--orange) 16%, var(--surface)); color: var(--orange-700); border-color: color-mix(in srgb, var(--orange) 40%, transparent); }
 .seg-sm button { padding: 9px 6px; font-size: 13px; }
 @media (max-width: 480px) { .adj-form { grid-template-columns: 1fr 1fr; } .adj-form .btn { grid-column: 1 / -1; justify-self: start; } }
+
+/* history & import */
+.hist-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.hist-card { padding: 20px; display: grid; gap: 12px; min-width: 0; }
+.hist-card h2 { margin: 0; font-size: 16px; }
+.hist-card > p { margin: -4px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.hist-wide { grid-column: 1 / -1; }
+.hist-result:empty { display: none; }
+.hist-result { display: grid; gap: 4px; background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.ok-line { font-weight: 700; }
+.im-summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.im-table { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; }
+.im-table .tbl td, .im-table .tbl th { padding: 7px 10px; font-size: 13px; }
+.im-err td { background: color-mix(in srgb, var(--clay) 7%, transparent); }
+.im-dup td { color: var(--ink-3); }
+input[type="file"].input { padding: 8px; }
+#bf-form .row-3 { grid-template-columns: 1fr 1fr; }
+#bf-form .row-3 .field:last-child { grid-column: 1 / -1; max-width: 160px; }

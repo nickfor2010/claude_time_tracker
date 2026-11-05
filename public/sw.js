@@ -1,6 +1,6 @@
 // Parsley Time service worker: app shell offline, API always from the network.
-const CACHE = 'parsley-time-v12';
-const SHELL = ['/', '/admin', '/css/app.css', '/js/common.js', '/js/i18n.js', '/js/employee.js', '/js/admin.js',
+const CACHE = 'parsley-time-v13';
+const SHELL = ['/', '/admin', '/css/app.css', '/js/common.js', '/js/i18n.js', '/js/employee.js', '/js/admin.js', '/js/csv-import.js',
   '/icons/icon-192.png', '/favicon.ico', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

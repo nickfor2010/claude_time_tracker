@@ -57,6 +57,19 @@ Each person is either **Hourly** (part-time) or **Monthly salary** (full-time). 
 - **Payslips.** Bilingual (中文 + English) and printable to A4/PDF. Staff see their paid payslips under **Payslips** on their phone.
 - **Settings.** Every rate is editable in Settings → Overtime and Paid leave. Please have your accountant confirm them.
 
+## History & import (歷史資料與匯入)
+
+Go to Timesheets → **History & import**.
+
+1. **Fill standard schedule.** Creates shifts for a person over a period (default: from their start date) with their normal hours. Their days off, national holidays, approved leave and days that already have shifts are skipped. You preview the result before anything is created.
+2. **Add past leave.** Records leave someone already took as approved, so it counts in balances and payroll. Add it before filling the schedule.
+3. **Import CSV.** Brings in shifts from another system, Excel or Google Sheets.
+   - Columns are recognised in English or Chinese, and common date/time formats work (2026/8/5, 9:00 AM, 下午1:05…).
+   - Files without an employee column (like the old monthly payroll sheets) go to the person you choose, and TOTAL rows are skipped.
+   - Every row is checked first, and rows already imported are skipped, so importing the same file twice is safe.
+
+Holidays before 2026 aren't pre-loaded. Add them in Settings first if past holidays should be skipped.
+
 ## Languages (English / 繁體中文)
 
 Every screen comes in English and Traditional Chinese (Taiwan). A phone set to Chinese opens in Chinese automatically, and the **中文 / EN** button switches language at any time. Each phone or computer remembers its own choice. The CSV export follows the dashboard language. All texts live in `public/js/i18n.js`.

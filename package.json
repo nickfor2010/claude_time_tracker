@@ -12,7 +12,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "demo": "node --no-warnings scripts/seed-demo.js",
-    "test": "node --no-warnings --test test/api.test.js test/push.test.js test/payroll.test.js test/leave-balance.test.js"
+    "test": "node --no-warnings --test test/api.test.js test/push.test.js test/payroll.test.js test/leave-balance.test.js test/csv-import.test.js"
   },
   "devDependencies": {
     "wrangler": "^4.157.0"
