@@ -50,7 +50,7 @@ Each person is either **Hourly** (part-time) or **Monthly salary** (full-time). 
 - **Payroll page.** Every month you see each person's hours, overtime, base pay, extras, deductions and net pay. **Adjust** adds a bonus, insurance or another deduction, plus a note. **Mark paid** locks the payslip and notifies the employee. **Reopen** unlocks it again. **Export CSV** gives the whole month.
 - **Overtime.** Hours beyond the daily hours are paid ×1.34 for the first 2 h, then ×1.67. For monthly staff, all hours worked on a non-work day count as overtime.
 - **Monthly staff.** The hourly value is salary ÷ 240. Approved leave below 100% pay is deducted, e.g. 事假 is a full day's pay and 病假 is half. Scheduled days with no punches and no leave are flagged but not deducted.
-- **National holidays (國定假日).** The official Taiwan calendars for 2026 and 2027 are pre-loaded, including substitute days (補假). You can add or remove dates in Settings → National holidays.
+- **National holidays (國定假日).** The Taiwan statutory holidays for 2020–2027 are pre-loaded, including substitute days (補假). Government bridge days (彈性放假) are not included, since they aren't holidays for private employers. You can add or remove dates in Settings → National holidays.
   - A holiday is a paid day off: monthly staff already have it in their salary, and hourly staff get their daily hours paid when it falls on one of their work days.
   - Working on a holiday earns an extra day's wage. Hours beyond the normal day are paid as overtime.
   - Leave days and "missing days" skip holidays.
@@ -68,7 +68,7 @@ Go to Timesheets → **History & import**.
    - Files without an employee column (like the old monthly payroll sheets) go to the person you choose, and TOTAL rows are skipped.
    - Every row is checked first, and rows already imported are skipped, so importing the same file twice is safe.
 
-Holidays before 2026 aren't pre-loaded. Add them in Settings first if past holidays should be skipped.
+Statutory holidays 2020–2027 are built in, so past holidays are skipped automatically.
 
 ## Languages (English / 繁體中文)
 

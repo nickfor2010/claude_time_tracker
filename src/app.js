@@ -158,14 +158,17 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       await setSetting('admin_default', adminPassword ? '0' : '1');
     }
     if (!(await getSetting('company'))) await setSetting('company', 'Parsley 帕斯里');
-    // Load the official Taiwan holiday list once (and again when a newer built-in year is added).
-    const seeded = Number(await getSetting('holidays_seeded') || 0);
-    const latestYear = Number(TW_HOLIDAYS[TW_HOLIDAYS.length - 1][0].slice(0, 4));
-    if (seeded < latestYear) {
-      for (const [date, zh, en] of TW_HOLIDAYS) {
-        if (Number(date.slice(0, 4)) > seeded) await db.run('INSERT INTO holidays(date, name_zh, name_en, source) VALUES(?, ?, ?, ?) ON CONFLICT(date) DO NOTHING', [date, zh, en, 'official']);
-      }
-      await setSetting('holidays_seeded', String(latestYear));
+    // Load each built-in year of official Taiwan holidays once. Years already loaded are left alone,
+    // so dates the manager added or removed are kept.
+    let done = (await getSetting('holidays_years'))?.split(',').filter(Boolean);
+    if (!done) { // older databases remembered only the newest seeded year
+      const old = Number(await getSetting('holidays_seeded') || 0);
+      done = old ? [...new Set(TW_HOLIDAYS.map((h) => h[0].slice(0, 4)))].filter((y) => y >= '2026' && Number(y) <= old) : [];
+    }
+    const missing = TW_HOLIDAYS.filter((h) => !done.includes(h[0].slice(0, 4)));
+    if (missing.length) {
+      await db.runMany('INSERT INTO holidays(date, name_zh, name_en, source) VALUES(?, ?, ?, ?) ON CONFLICT(date) DO NOTHING', missing.map(([d, zh, en]) => [d, zh, en, 'official']));
+      await setSetting('holidays_years', [...new Set([...done, ...missing.map((h) => h[0].slice(0, 4))])].sort().join(','));
     }
   }
   const ensureReady = () => (ready ||= init().catch((e) => { ready = null; throw e; }));

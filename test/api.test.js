@@ -210,10 +210,10 @@ test('full punch flow', async () => {
   // History: manager-entered leave, standard schedule fill, CSV import
   const hist = (await admin('/api/admin/employees', { method: 'POST', body: { name: 'Mei', pin: '1111', pay_type: 'monthly', monthly_salary: 40000, start_date: '2020-03-02', work_days: '1,2,3,4,5' } })).data;
   assert.equal((await admin('/api/admin/leave', { method: 'POST', body: { employee_id: hist.id, type: 'annual', start: '2025-08-04', end: '2025-08-08' } })).status, 201);
-  // Aug 2025: 21 weekdays, 5 on leave -> 16 shifts (no 2025 holidays loaded); preview first
+  // Aug 2025: 21 weekdays (no holidays), 5 on leave -> 16 shifts; preview first
   let bf = (await admin('/api/admin/backfill', { method: 'POST', body: { employee_id: hist.id, from: '2025-08-01', to: '2025-08-31', in: '09:00', out: '18:00', break_min: 60, dry_run: true } })).data;
   assert.deepEqual([bf.days, bf.created, bf.skipped.leave, bf.skipped.off], [16, 0, 5, 10]);
-  assert.deepEqual(bf.years_without_holidays, ['2025']);
+  assert.deepEqual(bf.years_without_holidays, []); // 2020–2025 holidays are built in now
   bf = (await admin('/api/admin/backfill', { method: 'POST', body: { employee_id: hist.id, from: '2025-08-01', to: '2025-08-31', in: '09:00', out: '18:00', break_min: 60 } })).data;
   assert.equal(bf.created, 16);
   // running it again creates nothing (days already have shifts)
@@ -240,6 +240,11 @@ test('full punch flow', async () => {
   const sep = (await admin(`/api/admin/shifts?from=2025-09-01&to=2025-09-30&employee=${hist.id}`)).data.shifts;
   assert.equal(sep.length, 2);
   assert.equal(sep.find((x) => x.day === '2025-09-03').clock_out - sep.find((x) => x.day === '2025-09-03').clock_in, 8 * 3600e3);
+
+  // Past holidays are loaded: 2024 Children's Day moved to Fri 4/5; 2021-12-31 substitute for New Year 2022
+  const h24 = (await admin('/api/admin/holidays?year=2024')).data.holidays.map((h) => h.date);
+  assert.ok(h24.includes('2024-04-05') && h24.includes('2024-02-14'));
+  assert.ok((await admin('/api/admin/holidays?year=2021')).data.holidays.some((h) => h.date === '2021-12-31'));
 
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
