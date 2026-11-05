@@ -23,6 +23,7 @@ function render({ row: r, company }) {
     ...(!monthly ? r.leave.filter((l) => l.amount).map((l) => [L(`${leaveName[l.type][0]}（帶薪 ${l.pct}%）`, `${leaveName[l.type][1]} · ${l.days} d · paid ${l.pct}%`), l.amount]) : []),
     r.earnings.holiday ? [L('國定假日工資', `Holiday pay · ${(r.holidays || []).filter((x) => x.paid).length} d × ${h(r.daily_hours)} h`), r.earnings.holiday] : null,
     r.earnings.holiday_work ? [L('國定假日出勤加給', `Holiday work pay · ${h(r.hours.holiday)} h worked`), r.earnings.holiday_work] : null,
+    r.earnings.leave_payout ? [L('特休未休折算工資', `Unused annual leave · ${h(r.leave_payout_days)} d`), r.earnings.leave_payout] : null,
     r.earnings.bonus ? [L('獎金', 'Bonus'), r.earnings.bonus] : null,
   ].filter(Boolean);
   const ded = [

@@ -37,6 +37,10 @@ const SCHEMA = [
      bonus REAL DEFAULT 0, deduction REAL DEFAULT 0, deduction_note TEXT DEFAULT '', insurance REAL, note TEXT DEFAULT '',
      status TEXT NOT NULL DEFAULT 'draft', snapshot TEXT, paid_at INTEGER, PRIMARY KEY (month, employee_id))`,
   `CREATE TABLE IF NOT EXISTS holidays (date TEXT PRIMARY KEY, name_zh TEXT NOT NULL, name_en TEXT NOT NULL DEFAULT '', source TEXT DEFAULT 'official')`,
+  `CREATE TABLE IF NOT EXISTS leave_adjust (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+     period_from TEXT NOT NULL, days REAL NOT NULL, note TEXT DEFAULT '', created_at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS leave_settle (employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, period_from TEXT NOT NULL,
+     action TEXT NOT NULL, days REAL NOT NULL DEFAULT 0, target_from TEXT, payout_month TEXT, created_at INTEGER NOT NULL, PRIMARY KEY (employee_id, period_from))`,
   `CREATE TABLE IF NOT EXISTS push_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, employee_id INTEGER, endpoint TEXT NOT NULL,
      p256dh TEXT NOT NULL, auth TEXT NOT NULL, lang TEXT DEFAULT 'en', created_at INTEGER NOT NULL, UNIQUE(endpoint, role))`,
 ];
@@ -93,7 +97,7 @@ const weekday = (dateStr) => new Date(dateStr + 'T00:00:00Z').getUTCDay(); // 0 
 const workedMs = (s, now = Date.now()) => Math.max(0, (s.clock_out ?? now) - s.clock_in - (s.break_min || 0) * 60000);
 const publicEmployee = (e) => e && ({ id: e.id, name: e.name, role: e.role, color: e.color, hourly_rate: e.hourly_rate, leave_hours: e.leave_hours ?? 8,
   pay_type: e.pay_type || 'hourly', monthly_salary: e.monthly_salary || 0, daily_hours: e.daily_hours ?? 8, work_days: e.work_days ?? '1,2,3,4,5',
-  insurance: e.insurance || 0, start_date: e.start_date || null, active: !!e.active, created_at: e.created_at });
+  insurance: e.insurance || 0, start_date: e.start_date || null, leave_system: e.leave_system === 'calendar' ? 'calendar' : 'anniversary', active: !!e.active, created_at: e.created_at });
 // Share of normal pay for each leave type (Taiwan common practice; editable in Settings).
 const DEFAULT_LEAVE_PAY = { annual: 100, sick: 50, personal: 0, other: 0 };
 // Validated pay fields shared by "add" and "edit employee".
@@ -109,6 +113,7 @@ function payFields(b, cur = {}) {
     work_days: [...new Set(days)].sort().join(','),
     insurance: nonNeg(pick('insurance', cur.insurance || 0), 0),
     start_date: (() => { const v = pick('start_date', cur.start_date ?? null); return isDate(v) ? v : null; })(),
+    leave_system: pick('leave_system', cur.leave_system || 'anniversary') === 'calendar' ? 'calendar' : 'anniversary',
   };
 }
 
@@ -145,7 +150,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     await db.batch(SCHEMA);
     // Migration for databases created before paid leave existed.
     for (const col of ['leave_hours REAL DEFAULT 8', "pay_type TEXT DEFAULT 'hourly'", 'monthly_salary REAL DEFAULT 0', 'daily_hours REAL DEFAULT 8',
-      "work_days TEXT DEFAULT '1,2,3,4,5'", 'insurance REAL DEFAULT 0', 'start_date TEXT']) {
+      "work_days TEXT DEFAULT '1,2,3,4,5'", 'insurance REAL DEFAULT 0', 'start_date TEXT', "leave_system TEXT DEFAULT 'anniversary'"]) {
       try { await db.run(`ALTER TABLE employees ADD COLUMN ${col}`); } catch { /* column already exists */ }
     }
     if (!(await getSetting('admin_hash'))) {
@@ -376,7 +381,11 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     const reqs = await db.all(`SELECT * FROM leave_requests WHERE employee_id IN (${ids.map(() => '?').join(',')}) AND status IN ('approved', 'pending') AND end_date >= ?`,
       [...ids, addDays(today, -800)]);
     const hol = new Set((await db.all('SELECT date FROM holidays WHERE date >= ?', [addDays(today, -800)])).map((h) => h.date));
-    return employees.map((e) => leaveBalance(e, reqs.filter((r) => r.employee_id === e.id), today, hol));
+    const inIds = `(${ids.map(() => '?').join(',')})`;
+    const adjusts = await db.all(`SELECT * FROM leave_adjust WHERE employee_id IN ${inIds} ORDER BY created_at`, ids);
+    const settles = await db.all(`SELECT * FROM leave_settle WHERE employee_id IN ${inIds}`, ids);
+    return employees.map((e) => leaveBalance(e, reqs.filter((r) => r.employee_id === e.id), today, hol,
+      adjusts.filter((x) => x.employee_id === e.id), settles.filter((x) => x.employee_id === e.id)));
   }
 
   // ---------- payroll ----------
@@ -386,12 +395,13 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
   // Payroll rows for a month. Paid rows come from their saved snapshot so later edits don't change a paid payslip.
   async function payrollMonth(month, onlyEmployeeId = null) {
     const from = `${month}-01`, to = lastDayOfMonth(from);
-    const [employees, shifts, leave, runs, leavePay, cfg, holidays] = await Promise.all([
+    const [employees, shifts, leave, runs, leavePay, cfg, holidays, payouts] = await Promise.all([
       db.all('SELECT * FROM employees ORDER BY created_at'),
       shiftsInRange(from, to),
       db.all("SELECT * FROM leave_requests WHERE status = 'approved' AND start_date <= ? AND end_date >= ?", [to, from]),
       db.all('SELECT * FROM payroll_runs WHERE month = ?', [month]),
       leavePayRates(), payrollCfg(), holidayMap(from, to),
+      db.all("SELECT * FROM leave_settle WHERE action = 'payout' AND payout_month = ?", [month]),
     ]);
     const today = dayKey(Date.now()), now = Date.now();
     const rows = [];
@@ -400,15 +410,16 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       const mine = shifts.filter((x) => x.employee_id === e.id);
       const myLeave = leave.filter((x) => x.employee_id === e.id);
       const run = runs.find((x) => x.employee_id === e.id);
+      const payoutDays = payouts.filter((x) => x.employee_id === e.id).reduce((a, x) => a + Number(x.days), 0);
       // include active staff, plus anyone with hours, leave or a saved run this month
       if (!e.active && !mine.length && !myLeave.length && !run) continue;
-      if (!onlyEmployeeId && e.pay_type !== 'monthly' && !mine.length && !myLeave.length && !run) continue;
+      if (!onlyEmployeeId && e.pay_type !== 'monthly' && !mine.length && !myLeave.length && !run && !payoutDays) continue;
       if (run?.status === 'paid' && run.snapshot) {
         const snap = JSON.parse(run.snapshot);
-        const fresh = computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now, holidays });
+        const fresh = computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now, holidays, payoutDays });
         rows.push({ ...snap, status: 'paid', paid_at: run.paid_at, changed_since_paid: fresh.net !== snap.net });
       } else {
-        rows.push({ ...computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now, holidays }), status: 'draft' });
+        rows.push({ ...computePay({ e, month, shifts: mine, leave: myLeave, adj: run, leavePay, cfg, dayKey, today, now, holidays, payoutDays }), status: 'draft' });
       }
     }
     const totals = rows.reduce((t, r) => ({ gross: t.gross + r.gross, deductions: t.deductions + r.total_deductions, net: t.net + r.net,
@@ -418,12 +429,12 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
   function payrollCsv(pr, lang) {
     const zh = lang === 'zh';
     const H = zh
-      ? ['員工', '計薪方式', '工時', '加班 (1.34)', '加班 (1.67)', '本薪', '加班費', '帶薪假', '國定假日工資', '國定假日出勤加給', '獎金', '請假扣款', '勞健保', '其他扣款', '應發', '實發', '狀態']
-      : ['Employee', 'Pay type', 'Hours', 'Overtime (1.34)', 'Overtime (1.67)', 'Base', 'Overtime pay', 'Paid leave', 'Holiday pay', 'Holiday work pay', 'Bonus', 'Leave deduction', 'Insurance', 'Other deduction', 'Gross', 'Net', 'Status'];
+      ? ['員工', '計薪方式', '工時', '加班 (1.34)', '加班 (1.67)', '本薪', '加班費', '帶薪假', '國定假日工資', '國定假日出勤加給', '特休未休工資', '獎金', '請假扣款', '勞健保', '其他扣款', '應發', '實發', '狀態']
+      : ['Employee', 'Pay type', 'Hours', 'Overtime (1.34)', 'Overtime (1.67)', 'Base', 'Overtime pay', 'Paid leave', 'Holiday pay', 'Holiday work pay', 'Unused leave pay', 'Bonus', 'Leave deduction', 'Insurance', 'Other deduction', 'Gross', 'Net', 'Status'];
     const rows = [H, ...pr.rows.map((r) => [r.name, zh ? (r.pay_type === 'monthly' ? '月薪' : '時薪') : r.pay_type, r.hours.worked, r.hours.ot1, r.hours.ot2,
-      r.earnings.base, r.earnings.overtime, r.earnings.leave, r.earnings.holiday || 0, r.earnings.holiday_work || 0, r.earnings.bonus, r.deductions.leave, r.deductions.insurance, r.deductions.other,
+      r.earnings.base, r.earnings.overtime, r.earnings.leave, r.earnings.holiday || 0, r.earnings.holiday_work || 0, r.earnings.leave_payout || 0, r.earnings.bonus, r.deductions.leave, r.deductions.insurance, r.deductions.other,
       r.gross, r.net, zh ? (r.status === 'paid' ? '已發放' : '草稿') : r.status])];
-    rows.push([zh ? '合計' : 'TOTAL', '', Math.round(pr.totals.hours * 100) / 100, '', '', '', '', '', '', '', '', '', '', '', pr.totals.gross, pr.totals.net, '']);
+    rows.push([zh ? '合計' : 'TOTAL', '', Math.round(pr.totals.hours * 100) / 100, '', '', '', '', '', '', '', '', '', '', '', '', pr.totals.gross, pr.totals.net, '']);
     const esc = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
     return '\uFEFF' + rows.map((r) => r.map(esc).join(',')).join('\r\n');
   }
@@ -584,6 +595,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
           [b.name.trim().slice(0, 40), String(b.role || '').trim().slice(0, 40), await hashSecret(b.pin), EMPLOYEE_COLORS[n % EMPLOYEE_COLORS.length], Number(b.hourly_rate) || 0, leaveHours(b.leave_hours, 8),
             pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, pf.start_date, Date.now()]);
+        await db.run('UPDATE employees SET leave_system = ? WHERE id = ?', [pf.leave_system, lastId]);
         return json(201, publicEmployee(await db.get('SELECT * FROM employees WHERE id = ?', [lastId])));
       }
       let mm;
@@ -599,8 +611,8 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
           b.active !== undefined ? (b.active ? 1 : 0) : emp.active,
           b.pin ? await hashSecret(b.pin) : emp.pin_hash, emp.id]);
         const pf = payFields(b, emp);
-        await db.run('UPDATE employees SET pay_type = ?, monthly_salary = ?, daily_hours = ?, work_days = ?, insurance = ?, start_date = ? WHERE id = ?',
-          [pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, pf.start_date, emp.id]);
+        await db.run('UPDATE employees SET pay_type = ?, monthly_salary = ?, daily_hours = ?, work_days = ?, insurance = ?, start_date = ?, leave_system = ? WHERE id = ?',
+          [pf.pay_type, pf.monthly_salary, pf.daily_hours, pf.work_days, pf.insurance, pf.start_date, pf.leave_system, emp.id]);
         if (b.active === false) await db.run("DELETE FROM sessions WHERE kind = 'emp' AND employee_id = ?", [emp.id]);
         return json(200, publicEmployee(await db.get('SELECT * FROM employees WHERE id = ?', [emp.id])));
       }
@@ -660,6 +672,53 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       if (p === '/api/admin/balances' && m === 'GET') {
         const employees = await db.all('SELECT * FROM employees WHERE active = 1 ORDER BY name');
         return json(200, { today: dayKey(Date.now()), balances: await balancesFor(employees) });
+      }
+      let bm;
+      if ((bm = p.match(/^\/api\/admin\/balances\/(\d+)\/(settle|adjust)(?:\/([\w-]+))?$/))) {
+        const [, idStr, kind, key] = bm;
+        const emp = await db.get('SELECT * FROM employees WHERE id = ?', [Number(idStr)]);
+        if (!emp) throw new HttpError(404, 'Employee not found');
+        const [bal] = await balancesFor([emp]);
+        if (kind === 'settle' && m === 'POST') {
+          const prev = bal.previous;
+          if (!prev) throw new HttpError(400, 'There is no closed leave year to settle');
+          if (prev.decision) throw new HttpError(400, 'This year is already settled. Undo it first.');
+          const b = await readBody(req);
+          if (!['carry', 'payout', 'none'].includes(b.action)) throw new HttpError(400, 'Invalid decision');
+          const days = b.action === 'none' ? 0 : Number(b.days ?? prev.unused);
+          if (b.action !== 'none' && !(days > 0 && days <= prev.unused + 0.001)) throw new HttpError(400, 'Days must be more than 0 and at most the unused days');
+          const month = b.action === 'payout' ? (/^\d{4}-\d{2}$/.test(b.month || '') ? b.month : dayKey(Date.now()).slice(0, 7)) : null;
+          if (month) {
+            const run = await db.get("SELECT status FROM payroll_runs WHERE month = ? AND employee_id = ?", [month, emp.id]);
+            if (run?.status === 'paid') throw new HttpError(400, 'That month is already paid. Choose another month or reopen the payslip.');
+          }
+          await db.run('INSERT INTO leave_settle(employee_id, period_from, action, days, target_from, payout_month, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
+            [emp.id, prev.from, b.action, days, b.action === 'carry' ? bal.annual.from : null, month, Date.now()]);
+          return json(200, { ok: true });
+        }
+        if (kind === 'settle' && m === 'DELETE' && key) {
+          const st = await db.get('SELECT * FROM leave_settle WHERE employee_id = ? AND period_from = ?', [emp.id, key]);
+          if (!st) throw new HttpError(404, 'Not found');
+          if (st.action === 'payout') {
+            const run = await db.get("SELECT status FROM payroll_runs WHERE month = ? AND employee_id = ?", [st.payout_month, emp.id]);
+            if (run?.status === 'paid') throw new HttpError(400, 'That month is already paid. Reopen the payslip first.');
+          }
+          await db.run('DELETE FROM leave_settle WHERE employee_id = ? AND period_from = ?', [emp.id, key]);
+          return json(200, { ok: true });
+        }
+        if (kind === 'adjust' && m === 'POST') {
+          if (bal.annual?.status !== 'active') throw new HttpError(400, 'Add a start date first');
+          const b = await readBody(req);
+          const days = Number(b.days);
+          if (!Number.isFinite(days) || days === 0 || Math.abs(days) > 60) throw new HttpError(400, 'Days must be between −60 and 60 (not 0)');
+          await db.run('INSERT INTO leave_adjust(employee_id, period_from, days, note, created_at) VALUES(?, ?, ?, ?, ?)',
+            [emp.id, bal.annual.from, Math.round(days * 10) / 10, String(b.note || '').slice(0, 120), Date.now()]);
+          return json(200, { ok: true });
+        }
+        if (kind === 'adjust' && m === 'DELETE' && key) {
+          await db.run('DELETE FROM leave_adjust WHERE id = ? AND employee_id = ?', [Number(key), emp.id]);
+          return json(200, { ok: true });
+        }
       }
       if (p === '/api/admin/holidays' && m === 'GET') {
         const year = /^\d{4}$/.test(url.searchParams.get('year') || '') ? url.searchParams.get('year') : dayKey(Date.now()).slice(0, 4);

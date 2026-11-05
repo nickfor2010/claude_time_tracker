@@ -186,6 +186,27 @@ test('full punch flow', async () => {
   assert.equal((await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { start_date: 'nope' } })).data.start_date, null);
   await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { start_date: '2023-06-01' } });
 
+  // Carry-over / pay-out / adjustments. Vera (start 2023-06-01): previous year 2025-06-01..2026-05-31, 10 days, none used.
+  let vb2 = (await admin('/api/admin/balances')).data.balances.find((b) => b.employee_id === emp.id);
+  assert.deepEqual([vb2.previous.from, vb2.previous.unused, vb2.previous.needs_decision], ['2025-06-01', 10, true]);
+  assert.equal((await admin(`/api/admin/balances/${emp.id}/settle`, { method: 'POST', body: { action: 'carry', days: 11 } })).status, 400);
+  assert.equal((await admin(`/api/admin/balances/${emp.id}/settle`, { method: 'POST', body: { action: 'carry', days: 4 } })).status, 200);
+  assert.equal((await admin(`/api/admin/balances/${emp.id}/adjust`, { method: 'POST', body: { days: 1.5, note: 'opening balance' } })).status, 200);
+  vb2 = (await admin('/api/admin/balances')).data.balances.find((b) => b.employee_id === emp.id);
+  assert.deepEqual([vb2.annual.carried, vb2.annual.adjusted, vb2.annual.remaining], [4, 1.5, 12 + 4 + 1.5]);
+  assert.equal((await admin(`/api/admin/balances/${emp.id}/settle`, { method: 'POST', body: { action: 'none' } })).status, 400); // already settled
+  assert.equal((await admin(`/api/admin/balances/${emp.id}/settle/2025-06-01`, { method: 'DELETE' })).status, 200);
+  await admin(`/api/admin/balances/${emp.id}/adjust/${vb2.annual.adjustments[0].id}`, { method: 'DELETE' });
+  // Pay out 10 days in 2027-01: hourly NT$200 x 8 h = 1600/day -> 16000 on that payslip
+  assert.equal((await admin(`/api/admin/balances/${emp.id}/settle`, { method: 'POST', body: { action: 'payout', days: 10, month: '2027-01' } })).status, 200);
+  const jan = (await admin('/api/admin/payroll?month=2027-01')).data.rows.find((r) => r.employee_id === emp.id);
+  assert.equal(jan.earnings.leave_payout, 16000);
+  // Switching Vera to the calendar-year system
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { leave_system: 'calendar' } });
+  vb2 = (await admin('/api/admin/balances')).data.balances.find((b) => b.employee_id === emp.id);
+  assert.deepEqual([vb2.leave_system, vb2.annual.from, vb2.annual.to], ['calendar', '2026-01-01', '2026-12-31']);
+  await admin(`/api/admin/employees/${emp.id}`, { method: 'PATCH', body: { leave_system: 'anniversary' } });
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

@@ -26,6 +26,15 @@ Staff tap **Time off → Request** on their phone, then choose the type (annual 
 
 Part-time staff get a share by weekly hours (40 h = 100%). Staff see their own balance on their phone.
 
+**Carry-over and leave systems.**
+- Each member uses either 週年制 (anniversary year) or 曆年制 (calendar year). Switch it in Team.
+  - 曆年制 uses the Ministry of Labor's proportional method, so it never gives fewer days than 週年制.
+- When a leave year closes with unused 特休, the balances table asks you to settle it (Time off → Leave balances → Manage). You can:
+  - **Carry over** (遞延) the days into the current year;
+  - **Pay out** the days in a chosen month's payroll (特休未休折算工資, one day's wage each: monthly salary ÷ 30, or daily hours × hourly rate);
+  - **Close** the year.
+- Manual ± adjustments with a note cover opening balances.
+
 **Paid leave in payroll.** Approved leave is added to the payroll estimate, the Timesheets (as its own rows) and the CSV export. Each leave day pays the person's *paid hours per leave day* (set in Team, default 8) × hourly rate × the percentage for that leave type. The defaults follow common Taiwan practice: annual 100%, sick 50%, personal 0%, other 0%. Change them in Settings → Paid leave. Leave is counted per calendar day of the approved request.
 
 **Phone notifications.** On the Time off page (manager) or under Time off (staff), tap **Turn on** on each phone that should be notified.

@@ -36,8 +36,9 @@ const hrs = (n) => Math.round(n * 100) / 100;
  * @param today    'YYYY-MM-DD' (for "days without punches", only days up to today count)
  * @param now      ms, used for shifts still open
  * @param holidays Map of 'YYYY-MM-DD' -> holiday name (national holidays in this month)
+ * @param payoutDays unused annual-leave days paid out this month (特休未休工資), at one day's wage each
  */
-export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LEAVE_PAY, cfg = DEFAULT_PAYROLL, dayKey, today, now = Date.now(), holidays = new Map() }) {
+export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LEAVE_PAY, cfg = DEFAULT_PAYROLL, dayKey, today, now = Date.now(), holidays = new Map(), payoutDays = 0 }) {
   cfg = { ...DEFAULT_PAYROLL, ...cfg };
   const monthly = e.pay_type === 'monthly';
   const daily = Number(e.daily_hours) > 0 ? Number(e.daily_hours) : 8;
@@ -95,6 +96,9 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
   const paidHolidays = !monthly && cfg.holiday_pay_hourly ? holidayDays.filter((d) => !perDay[d]) : [];
   const holidayPay = paidHolidays.length * daily * rate;
   const holidayWork = holidayExtraHours * rate;
+  // One day's wage: monthly salary / 30, or daily hours x hourly rate
+  const dayWage = monthly ? salary / 30 : daily * rate;
+  const leavePayout = (Number(payoutDays) || 0) * dayWage;
 
   // Scheduled days with no punches, no leave and no holiday (monthly staff, information only)
   const missing = monthly ? days.filter((d) => d <= today && wd.has(weekday(d)) && !perDay[d] && !leaveDays.has(d) && !holidays.has(d)) : [];
@@ -104,7 +108,7 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
   const other = Number(adj?.deduction) || 0;
   const base = monthly ? salary : regular * rate;
   const otPay = ot1 * rate * (Number(cfg.ot_rate1) || 1) + ot2 * rate * (Number(cfg.ot_rate2) || 1);
-  const gross = money(base) + money(otPay) + money(leaveAdd) + money(holidayPay) + money(holidayWork) + money(bonus);
+  const gross = money(base) + money(otPay) + money(leaveAdd) + money(holidayPay) + money(holidayWork) + money(leavePayout) + money(bonus);
   const deductions = money(leaveDeduct) + money(insurance) + money(other);
 
   return {
@@ -114,7 +118,8 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
     holidays: holidayDays.map((d) => ({ date: d, name: holidays.get(d), worked: hrs(perDay[d] || 0), paid: paidHolidays.includes(d) })),
     days_worked: Object.keys(perDay).length, open_shifts: openShifts, missing_days: missing,
     leave: Object.values(leaveByType).map((l) => ({ ...l, hours: hrs(l.hours), amount: money(l.amount) })),
-    earnings: { base: money(base), overtime: money(otPay), leave: money(leaveAdd), holiday: money(holidayPay), holiday_work: money(holidayWork), bonus: money(bonus) },
+    earnings: { base: money(base), overtime: money(otPay), leave: money(leaveAdd), holiday: money(holidayPay), holiday_work: money(holidayWork), leave_payout: money(leavePayout), bonus: money(bonus) },
+    leave_payout_days: Number(payoutDays) || 0,
     deductions: { leave: money(leaveDeduct), insurance: money(insurance), other: money(other), other_note: adj?.deduction_note || '' },
     gross, total_deductions: deductions, net: gross - deductions,
     note: adj?.note || '',

@@ -1,8 +1,14 @@
 // Annual leave (特休) by seniority, Taiwan Labor Standards Act art. 38 (2017):
 //   6 months – 1 year: 3 days · 1–2 years: 7 · 2–3 years: 10 · 3–5 years: 14 · 5–10 years: 15
 //   from 10 years: +1 day per extra year, up to 30 days.
-// Anniversary-based periods (週年制). Part-time staff get a share in proportion to their weekly hours
-// compared with a 40-hour week. Pure functions: no database.
+// Two systems, chosen per employee:
+//   週年制 anniversary: each year runs from the hire anniversary.
+//   曆年制 calendar year: Jan 1 – Dec 31; days are the anniversary entitlements pro-rated by how much of
+//   each anniversary period falls in that calendar year (Ministry of Labor proportional method), so the
+//   total is never less than under the anniversary system.
+// Part-time staff get a share in proportion to their weekly hours compared with a 40-hour week.
+// Carry-over (遞延): unused days of a closed year can be carried into the next one, paid out, or closed.
+// Pure functions: no database.
 import { workDaySet, weekday } from './payroll.js';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -38,6 +44,41 @@ export function annualPeriod(startDate, today) {
   return { status: 'active', from, to: addDays(next, -1), days: daysForYears(years), years, nextGrant: { date: next, days: daysForYears(years + 1) } };
 }
 
+const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400e3) + 1; // inclusive
+
+// All anniversary periods (from, to, days) up to a date
+export function anniversaryPeriods(startDate, until) {
+  const out = [];
+  if (!startDate) return out;
+  out.push({ from: addMonths(startDate, 6), to: addDays(addMonths(startDate, 12), -1), days: 3 });
+  for (let n = 1; addMonths(startDate, 12 * n) <= until; n++) {
+    out.push({ from: addMonths(startDate, 12 * n), to: addDays(addMonths(startDate, 12 * (n + 1)), -1), days: daysForYears(n) });
+  }
+  return out;
+}
+// 曆年制: entitlement for calendar year `year`
+export function calendarYearDays(startDate, year) {
+  const from = `${year}-01-01`, to = `${year}-12-31`;
+  let total = 0;
+  for (const p of anniversaryPeriods(startDate, to)) {
+    const a = p.from > from ? p.from : from, b = p.to < to ? p.to : to;
+    if (a <= b) total += p.days * daysBetween(a, b) / daysBetween(p.from, p.to);
+  }
+  return Math.round(total * 100) / 100;
+}
+
+// The leave year containing `date` for this employee's system: { status, from, to, days, nextGrant }
+export function leavePeriod(e, date) {
+  if ((e.leave_system || 'anniversary') !== 'calendar') return annualPeriod(e.start_date, date);
+  const s = e.start_date;
+  if (!s || s > date) return { status: s ? 'future' : 'no_start', nextGrant: s ? { date: addMonths(s, 6), days: 3 } : null };
+  const y = Number(date.slice(0, 4));
+  const days = calendarYearDays(s, y);
+  const next = { date: `${y + 1}-01-01`, days: calendarYearDays(s, y + 1) };
+  if (days <= 0) return { status: 'waiting', nextGrant: addMonths(s, 6) > `${y}-12-31` ? next : { date: addMonths(s, 6), days: 3 } };
+  return { status: 'active', from: `${y}-01-01`, to: `${y}-12-31`, days, years: y, nextGrant: next };
+}
+
 // Full-time = 40 h/week. Part-time staff get a proportional share (never more than full).
 export function partTimeRatio(e) {
   const weekly = (Number(e.daily_hours) > 0 ? Number(e.daily_hours) : 8) * workDaySet(e).size;
@@ -60,19 +101,36 @@ const round1 = (x) => Math.round(x * 10) / 10;
 
 /**
  * Balance overview for one employee.
- * @param requests this employee's leave requests (any status)
- * @param holidays Set of holiday dates
+ * @param requests  this employee's leave requests (approved and pending)
+ * @param holidays  Set of holiday dates
+ * @param adjusts   manual adjustments [{ id, period_from, days, note }]
+ * @param settles   decisions on closed years [{ period_from, action: 'carry'|'payout'|'none', days, target_from, payout_month }]
  */
-export function leaveBalance(e, requests, today, holidays = new Set()) {
+export function leaveBalance(e, requests, today, holidays = new Set(), adjusts = [], settles = []) {
   const ratio = partTimeRatio(e);
-  const period = annualPeriod(e.start_date, today);
+  const period = leavePeriod(e, today);
   const by = (type, status) => requests.filter((r) => r.type === type && r.status === status);
-  const out = { employee_id: e.id, name: e.name, color: e.color, pay_type: e.pay_type || 'hourly', start_date: e.start_date || null, ratio: round1(ratio * 100) / 100, annual: null };
+  const out = { employee_id: e.id, name: e.name, color: e.color, pay_type: e.pay_type || 'hourly', start_date: e.start_date || null,
+    leave_system: e.leave_system === 'calendar' ? 'calendar' : 'anniversary', ratio: round1(ratio * 100) / 100, annual: null, previous: null };
+  // Balance of one leave year (earned + carried in + adjustments − used)
+  const yearBalance = (p) => {
+    const earned = round1(p.days * ratio);
+    const carried = round1(settles.filter((x) => x.action === 'carry' && x.target_from === p.from).reduce((a, x) => a + Number(x.days), 0));
+    const adj = adjusts.filter((x) => x.period_from === p.from);
+    const adjusted = round1(adj.reduce((a, x) => a + Number(x.days), 0));
+    const used = countLeaveDays(by('annual', 'approved'), e, p.from, p.to, holidays);
+    const pending = countLeaveDays(by('annual', 'pending'), e, p.from, p.to, holidays);
+    return { from: p.from, to: p.to, legal_days: p.days, earned, carried, adjusted, adjustments: adj, used, pending, remaining: round1(earned + carried + adjusted - used) };
+  };
   if (period.status === 'active') {
-    const earned = round1(period.days * ratio);
-    const used = countLeaveDays(by('annual', 'approved'), e, period.from, period.to, holidays);
-    const pending = countLeaveDays(by('annual', 'pending'), e, period.from, period.to, holidays);
-    out.annual = { ...period, legal_days: period.days, earned, used, pending, remaining: round1(earned - used), next: { ...period.nextGrant, days: round1(period.nextGrant.days * ratio) } };
+    out.annual = { status: 'active', years: period.years, ...yearBalance(period), next: { ...period.nextGrant, days: round1(period.nextGrant.days * ratio) } };
+    // The year that just closed, and what was decided about its unused days
+    const prev = leavePeriod(e, addDays(period.from, -1));
+    if (prev.status === 'active') {
+      const pb = yearBalance(prev);
+      const decision = settles.find((x) => x.period_from === prev.from) || null;
+      out.previous = { ...pb, unused: Math.max(0, pb.remaining), decision, needs_decision: !decision && pb.remaining > 0 };
+    }
   } else {
     out.annual = { status: period.status, next: period.nextGrant ? { ...period.nextGrant, days: round1(period.nextGrant.days * ratio) } : null };
   }

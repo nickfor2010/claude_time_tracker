@@ -83,7 +83,11 @@
       <h3 id="emp-title">Add team member</h3>
       <div class="field"><label for="em-name" data-i18n>Name</label><input class="input" id="em-name" required maxlength="40"></div>
       <div class="field"><label for="em-role" data-i18n>Role</label><input class="input" id="em-role" placeholder="Pastry chef" data-i18n-placeholder="Pastry chef" maxlength="40"></div>
-      <div class="field"><label for="em-start" data-i18n>Start date</label><input class="input" type="date" id="em-start" style="max-width:200px"></div>
+      <div class="row-2">
+        <div class="field"><label for="em-start" data-i18n>Start date (到職日)</label><input class="input" type="date" id="em-start"></div>
+        <div class="field"><label data-i18n>Annual leave system</label><div class="seg seg-sm" id="em-lsys" role="radiogroup"></div></div>
+      </div>
+      <p class="muted" style="margin:-8px 0 0;font-size:12.5px" data-i18n>特休 (annual leave) is calculated from the start date.</p>
       <div class="field"><label data-i18n>Pay type</label><div class="seg" id="em-paytype" role="radiogroup"></div></div>
       <div class="row-2">
         <div class="field pay-hourly"><label for="em-rate" data-i18n>Hourly rate (NT$)</label><input class="input" type="number" min="0" step="1" id="em-rate" value="196"></div>
@@ -127,6 +131,15 @@
         <button class="btn btn-primary" value="save" data-i18n>Save</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Leave balance dialog -->
+  <dialog id="dlg-bal">
+    <div class="bal-dlg">
+      <h3 id="bal-title"></h3>
+      <div id="bal-body"></div>
+      <div class="dlg-actions"><span class="spacer"></span><button class="btn btn-ghost" type="button" id="bal-close" data-i18n>Close</button></div>
+    </div>
   </dialog>
 
   <script type="module" src="/js/admin.js"></script>

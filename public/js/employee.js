@@ -191,7 +191,7 @@ function renderLeave() {
     const used = a.earned ? Math.min(100, (a.used / a.earned) * 100) : 0, pend = a.earned ? Math.min(100 - used, (a.pending / a.earned) * 100) : 0;
     box.innerHTML = `<div class="bal-top"><span>${t('Annual leave (特休)')}</span><b>${t('{n} days left', { n: a.remaining })}</b></div>
       <div class="bal-bar"><i style="width:${used}%"></i><i class="pend" style="width:${pend}%"></i></div>
-      <div class="s">${t('{used} used · {pending} pending · {earned} earned', { used: a.used, pending: a.pending, earned: a.earned })} · ${t('use by {date}', { date: dateLabel(a.to, { year: 'numeric', month: 'short', day: 'numeric' }) })}</div>`;
+      <div class="s">${t('{used} used · {pending} pending · {earned} earned', { used: a.used, pending: a.pending, earned: a.earned })}${a.carried ? ' · ' + t('+{n} carried', { n: a.carried }) : ''}${a.adjusted ? ' · ' + t('{n} adjusted', { n: (a.adjusted > 0 ? '+' : '') + a.adjusted }) : ''} · ${t('use by {date}', { date: dateLabel(a.to, { year: 'numeric', month: 'short', day: 'numeric' }) })}</div>`;
     box.classList.remove('hidden');
   } else if (a?.status === 'waiting' && a.next) {
     box.innerHTML = `<div class="s">${t('You will earn {n} days of 特休 on {date}.', { n: a.next.days, date: dateLabel(a.next.date, { year: 'numeric', month: 'short', day: 'numeric' }) })}</div>`;
