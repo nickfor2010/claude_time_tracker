@@ -99,34 +99,41 @@ Statutory holidays 2020–2027 are built in, so past holidays are skipped automa
   - The person's other phones are signed out.
   - The manager can still set a new PIN in Team if someone forgets theirs.
 
-## Staff agreement (員工守則暨保密同意書)
+## Staff agreement (員工行為守則暨保密同意書)
 
 A code of conduct that every team member reads and signs in the app.
 
-- **Ready-made text.** It comes in English and 中文 and covers:
-  - honesty: punching only for yourself, cash and stock, owning up to mistakes;
-  - cooperation and respect;
-  - communication: lateness, absences, speaking up;
-  - **confidentiality of recipes and methods**, under the Trade Secrets Act 營業秘密法, continuing after the job ends;
-  - hygiene and food safety, conduct at work and social media;
-  - what happens when rules are broken (talk → written warning → 勞基法第12條 for serious breaches);
-  - the shop's own promise to the team.
+- **Built-in text.** It is written for Parsley Italian Handmade Desserts, in 中文 and English:
+  - 01 Honesty;
+  - 02 Cooperation;
+  - 03 Communication & attendance;
+  - 04 **Recipes, production methods & trade secrets** (營業秘密法);
+  - 05 Hygiene & food safety;
+  - 06 Conduct at work;
+  - 07 Social media;
+  - 08 Handling violations (conversation → written warning → 勞基法第12條 only when its legal conditions and deadlines are met);
+  - 09 Our promise to you;
+  - the employee acknowledgment.
 
-  It starts as a **draft** for you to review in Team → Staff agreement.
+  It starts as a **draft** in Team → Staff agreement.
 - **Edit and publish.** Edit both languages, with a live preview, then press **Publish**. Every team member gets a notification.
-  - Changing the text later creates a **new version**, and everyone signs again.
-  - Earlier signatures are kept.
+  - Changing the text later creates a **new version**, and everyone signs again. Earlier signatures are kept.
+  - Text format: `## ` heading, `1. ` numbered item, `- ` bullet (indent with two spaces to put it under the item above), and an empty line between paragraphs.
 - **Staff side.**
   - The agreement opens by itself until it's signed, and a reminder card stays on the main screen.
-  - The person scrolls to the end, ticks "I have read and understood this agreement, and I agree to follow it", types their full name and taps **Sign**.
-  - They can reread it at any time (tap their name → Staff agreement) and print their copy.
+  - The person scrolls to the end, ticks the confirmation, types their full name and taps **Sign**.
+  - They can reread and print it at any time (tap their name → Staff agreement).
 - **Manager side.**
-  - Team shows who has signed and when, with a progress bar.
-  - **Remind** sends a reminder to one person or to everyone who hasn't signed.
-  - 🖨 prints a signed copy (中文 + English, with name, version and time) for the personnel file.
-  - The Overview shows a banner while people still need to sign.
+  - Team shows who has signed and when.
+  - **Remind** sends a reminder to one person or to everyone.
+  - 🖨 prints a signed copy for the personnel file. It has both languages, the employee's name, position and start date, the typed signature with date and time, and blank lines for the ID number, the company representative and the company stamp.
 
-The text is a starting template, not legal advice. Adjust it to your shop, and have it checked if you are unsure.
+**Before publishing, check:**
+1. **Trade secrets.** 營業秘密法 only protects information that is kept secret with *reasonable secrecy measures*. Back the text up in practice: limit who can see recipes, keep them in controlled folders, and enforce the no-photo rule.
+2. **Work rules.** With **30 or more employees**, 勞基法 art. 70 requires formal work rules (工作規則) to be approved by and registered with the local labour authority.
+3. **Article 12.** A warning system does not replace the legal conditions of 勞基法第12條. For example, for most grounds the contract must be ended within 30 days of learning the facts.
+
+The text is a template, not legal advice. Have it checked if you are unsure.
 
 ## Languages (English / 繁體中文)
 

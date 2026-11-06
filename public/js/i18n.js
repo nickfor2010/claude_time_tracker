@@ -635,7 +635,7 @@ const zh = {
   "Version {v} published. The team has been notified.": "第 {v} 版已發布，已通知團隊。",
   "Title": "標題",
   "Text": "內容",
-  "Start a line with ## for a heading and - for a bullet. Leave an empty line between paragraphs. **Bold** works too.": "以 ## 開頭為標題、以 - 開頭為條列項目，段落之間空一行。也可以使用 **粗體**。",
+  "Start a line with ## for a heading, 1. for a numbered item and - for a bullet (indent it to place it under the item above). Leave an empty line between paragraphs. **Bold** works too.": "以 ## 開頭為標題、1. 為編號項目、- 為條列項目（前面空兩格可放在上一項之下），段落之間空一行。也可以使用 **粗體**。",
   "This text is a starting template, not legal advice. Adjust it to your shop, and have it checked if you are unsure.": "此內容為範本，並非法律意見。請依店內情況調整，如有疑問請專業人士確認。",
   "Discard draft": "捨棄草稿",
   "Save draft": "儲存草稿",

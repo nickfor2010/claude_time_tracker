@@ -15,17 +15,27 @@ $('#print').onclick = () => print();
 function render({ agreement: a, signature: s, employee: e, company }) {
   const part = (lang, title, body) => body ? `<section class="lang-part" lang="${lang}">
     <div class="head"><img src="/icons/icon-192.png" alt=""><div><h1>${esc(title)}</h1>
-      <span>${esc(company)} · ${lang === 'en' ? `Version ${a.version} · ${day(a.published_at)}` : `第 ${a.version} 版 · ${day(a.published_at)}`}</span></div></div>
+      <span>${esc(company)} · ${lang === 'en' ? `Version ${a.version} · Effective ${day(a.published_at)}` : `文件版本 第 ${a.version} 版 · 生效日期 ${day(a.published_at)}`}</span></div></div>
     <div class="doc">${renderDoc(body)}</div></section>` : '';
   $('#paper').innerHTML = `<div class="paper">
     ${part('zh-Hant-TW', a.title_zh, a.body_zh)}${part('en', a.title_en, a.body_en)}
     <div class="sig">
-      <div><small>員工 Employee</small><b>${esc(e.name)}</b>${e.role ? ` · ${esc(e.role)}` : ''}</div>
-      <div><small>版本 Version</small><b>${a.version}</b></div>
-      ${s ? `<div class="full"><small>簽名 Signature</small><span class="name">${esc(s.signed_name)}</span></div>
-        <div class="full"><small>簽署時間 Signed</small>${when(s.signed_at)} — 已於 App 中勾選「我已閱讀並了解本同意書，並同意遵守。」 Confirmed in the app: "I have read and understood this agreement, and I agree to follow it."</div>`
+      <div class="full sec">員工資料 Employee Information</div>
+      <div><small>員工姓名 Employee Name</small><b>${esc(e.name)}</b></div>
+      <div><small>職位 Position</small>${esc(e.role || '') || '<span class="line"></span>'}</div>
+      <div><small>到職日期 Employment Start Date</small>${e.start_date ? esc(e.start_date.replaceAll('-', '/')) : '<span class="line"></span>'}</div>
+      <div><small>身分證明文件號碼 Identification Number</small><span class="line"></span></div>
+      ${s ? `<div><small>員工簽名 Employee Signature</small><span class="name">${esc(s.signed_name)}</span></div>
+        <div><small>日期 Date</small>${when(s.signed_at)}</div>
+        <div class="full note">版本 ${a.version} · 已於 App 中勾選「我已閱讀並了解本同意書，並同意遵守。」並輸入姓名簽署。 Version ${a.version} · signed in the app by ticking "I have read and understood this agreement, and I agree to follow it." and typing the name above.</div>`
         : `<div class="full unsigned">尚未簽署 Not signed yet</div>`}
-    </div></div>`;
+      <div class="full sec">公司 Company</div>
+      <div><small>公司代表 Company Representative</small><span class="line"></span></div>
+      <div><small>日期 Date</small><span class="line"></span></div>
+      <div class="full"><small>公司簽章 Company Stamp</small><span class="stamp"></span></div>
+    </div>
+    <p class="tagline">PARSLEY Italian Handmade Desserts · 帕斯里義式手工甜點<br><i>Good ingredients. Honest craftsmanship. A team that cares.</i></p>
+  </div></div>`;
   document.title = `${a.title_zh || a.title_en} · ${e.name}`;
 }
 

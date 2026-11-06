@@ -27,6 +27,12 @@
     .sig .full { grid-column: 1 / -1; }
     .sig .name { font-family: var(--font-display); font-size: 22px; color: #6e1e2e; }
     .unsigned { color: #c0392b; font-weight: 700; }
+    .sig .sec { font-size: 12px; letter-spacing: .08em; font-weight: 700; color: #6e1e2e; border-bottom: 1px solid #eae3dc; padding-bottom: 4px; }
+    .sig .sec:not(:first-child) { margin-top: 8px; }
+    .sig .line { display: block; border-bottom: 1px solid #2a1418; height: 24px; }
+    .sig .stamp { display: block; width: 110px; height: 110px; border: 1px dashed #b8a9a2; border-radius: 10px; margin-top: 4px; }
+    .sig .note { font-size: 12px; color: #8c7a7d; }
+    .tagline { text-align: center; color: #6e1e2e; font-size: 13px; margin: 22px 0 0; line-height: 1.6; }
     @media (max-width: 600px) { .paper { padding: 22px 18px; } .sig { grid-template-columns: 1fr; } }
     @media print {
       body { background: #fff; }

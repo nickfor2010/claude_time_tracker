@@ -331,7 +331,8 @@ test('full punch flow', async () => {
   let ag = (await admin('/api/admin/agreement')).data;
   assert.equal(ag.published, null);
   assert.match(ag.draft.body_zh, /營業秘密法/);
-  assert.ok(!ag.draft.body_en.includes('{company}'));
+  assert.match(ag.draft.body_en, /great desserts/);
+  assert.match(ag.draft.body_zh, /勞動基準法》第12條/);
   assert.equal((await phone('/api/me')).data.agreement, null);
   assert.equal((await admin('/api/admin/agreement/remind', { method: 'POST', body: {} })).status, 400);
   assert.equal((await admin('/api/admin/agreement/draft', { method: 'PUT', body: { title_en: '', title_zh: '', body_en: 'x', body_zh: '' } })).status, 400);

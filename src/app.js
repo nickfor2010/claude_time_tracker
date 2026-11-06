@@ -3,7 +3,7 @@ import { computePay, DEFAULT_PAYROLL, workDaySet, weekday as wdOf } from './payr
 import { TW_HOLIDAYS } from './holidays-tw.js';
 import { leaveBalance } from './leave-balance.js';
 import { compBalance } from './comp.js';
-import { DEFAULT_AGREEMENT } from './agreement-default.js';
+import { DEFAULT_AGREEMENT, DEFAULT_AGREEMENT_VERSION, OLD_DEFAULT_START } from './agreement-default.js';
 // Parsley Time — platform-independent API core.
 // Runs on Cloudflare Workers (D1) and on Node.js (node:sqlite) through a tiny async DB adapter:
 //   db.all(sql, params) -> rows, db.get(sql, params) -> row|null, db.run(sql, params) -> { lastId }, db.batch(sqls)
@@ -201,13 +201,20 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     }
     if (!(await getSetting('company'))) await setSetting('company', 'Parsley 帕斯里');
     // The default code of conduct starts as a draft for the manager to review and publish
-    if (!(await getSetting('agreement_seeded'))) {
-      const co = await getSetting('company');
-      const fill = (txt, lang) => txt.replaceAll('{company}', lang === 'zh' ? co : co.replace(/\s*[\u3400-\u9fff]+$/, '') || co);
+    // A newer built-in text replaces an untouched older draft, as long as nothing has been published yet.
+    const seededV = Number(await getSetting('agreement_seeded') || 0);
+    if (seededV < DEFAULT_AGREEMENT_VERSION) {
       const d = DEFAULT_AGREEMENT;
-      await db.run('INSERT INTO agreements(title_en, title_zh, body_en, body_zh, created_at) VALUES(?, ?, ?, ?, ?)',
-        [d.title_en, d.title_zh, fill(d.body_en, 'en'), fill(d.body_zh, 'zh'), Date.now()]);
-      await setSetting('agreement_seeded', '1');
+      const anyPublished = await db.get('SELECT 1 FROM agreements WHERE published_at IS NOT NULL LIMIT 1');
+      const draft = await db.get('SELECT * FROM agreements WHERE published_at IS NULL ORDER BY id DESC LIMIT 1');
+      const co = (await getSetting('company')).replace(/\s*[\u3400-\u9fff]+$/, '');
+      const untouched = draft && draft.body_en.startsWith(OLD_DEFAULT_START.replace('{company}', co));
+      if (!anyPublished && (!draft || untouched)) {
+        if (draft) await db.run('DELETE FROM agreements WHERE id = ?', [draft.id]);
+        await db.run('INSERT INTO agreements(title_en, title_zh, body_en, body_zh, created_at) VALUES(?, ?, ?, ?, ?)',
+          [d.title_en, d.title_zh, d.body_en, d.body_zh, Date.now()]);
+      }
+      await setSetting('agreement_seeded', String(DEFAULT_AGREEMENT_VERSION));
     }
     // Load each built-in year of official Taiwan holidays once. Years already loaded are left alone,
     // so dates the manager added or removed are kept.
@@ -662,7 +669,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       if (p === '/api/me/agreement' && m === 'GET') {
         const cur = await publishedAgreement();
         const sign = cur && await db.get('SELECT signed_at, signed_name FROM agreement_signs WHERE agreement_id = ? AND employee_id = ?', [cur.id, emp.id]);
-        return json(200, { agreement: cur || null, signature: sign || null, employee: { name: emp.name, role: emp.role }, company: await getSetting('company') });
+        return json(200, { agreement: cur || null, signature: sign || null, employee: { name: emp.name, role: emp.role, start_date: emp.start_date }, company: await getSetting('company') });
       }
       if (p === '/api/me/agreement/sign' && m === 'POST') {
         const b = await readBody(req);
@@ -885,7 +892,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       }
       let ag;
       if ((ag = p.match(/^\/api\/admin\/agreement\/signed\/(\d+)$/)) && m === 'GET') {
-        const emp = await db.get('SELECT id, name, role FROM employees WHERE id = ?', [Number(ag[1])]);
+        const emp = await db.get('SELECT id, name, role, start_date FROM employees WHERE id = ?', [Number(ag[1])]);
         if (!emp) throw new HttpError(404, 'Employee not found');
         const row = await db.get(`SELECT a.*, s.signed_at, s.signed_name FROM agreement_signs s JOIN agreements a ON a.id = s.agreement_id
           WHERE s.employee_id = ? ORDER BY a.version DESC LIMIT 1`, [emp.id]);

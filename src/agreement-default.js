@@ -1,160 +1,272 @@
-// Default text of the staff code of conduct (員工守則). It is saved as a draft on first start; the manager
-// reviews and edits it in the dashboard (Team → Shop agreement) before publishing it to the team.
-// Format: "## " headings, "- " bullets, blank lines between paragraphs, **bold**.
+// Default text of the staff code of conduct (員工行為守則暨保密同意書), written for Parsley Italian Handmade Desserts.
+// It is saved as a draft on first start; the manager reviews it in the dashboard (Team → Staff agreement) and publishes it.
+// Format: "## " headings, "1. " numbered items, "- " bullets (indent them under a numbered item), blank lines between paragraphs, **bold**.
+
+export const DEFAULT_AGREEMENT_VERSION = 2; // bump when the built-in text changes
+// Start of the earlier built-in text, so an untouched old draft can be replaced by the new one
+export const OLD_DEFAULT_START = 'Welcome to the {company} team! We are a small shop with big standards.';
 
 export const DEFAULT_AGREEMENT = {
   title_en: 'Staff Code of Conduct & Confidentiality Agreement',
   title_zh: '員工行為守則暨保密同意書',
-  body_en: `Welcome to the {company} team! We are a small shop with big standards. We cook and serve with Italian passion, and that only works when everyone can trust each other. This agreement explains what we expect from everyone who works here: managers included. Please read it carefully. When you sign, you confirm that you understand it and will follow it.
+  body_zh: `親愛的夥伴：
 
-## 1. Honesty
-- Clock in and out **only for yourself**, and only when you are actually starting or finishing work. Punching for a colleague, or asking someone to punch for you, is never allowed.
-- Handle cash, card payments, stock and ingredients with complete honesty. Record every sale, discount and refund correctly.
-- Nothing leaves the shop without permission: food, drinks, ingredients, equipment or packaging. Staff meals follow the rules your manager gives you.
-- Mistakes happen, and that's OK. Report them right away (a broken dish, a wrong order, a cash difference, a burnt batch). Hiding a mistake is a much bigger problem than the mistake itself.
-- Information you give us (time off, sick leave, personal details) must be true.
+歡迎加入 Parsley 團隊！
 
-## 2. Cooperation and respect
-- We are one team. Help each other, especially at busy times, even if a task is "not your job".
-- Treat colleagues, customers and suppliers with respect. Shouting, insults, bullying, discrimination and any form of harassment, including sexual harassment, are not tolerated.
-- Leave your station clean and ready for the next person. Finish your closing tasks before you clock out.
-- Follow the instructions of the manager or the person in charge of the shift. If you disagree, say so calmly and privately afterwards.
-- Disagreements between colleagues are solved by talking, never in front of customers.
+我們相信，美好的甜點來自好的原料、用心的製作，以及一群願意互相支持的人。
 
-## 3. Communication
-- If you will be late or cannot come, tell your manager **as early as possible**, by phone or message, and before your shift starts. Not showing up without notice is a serious breach.
-- Request time off through the app, with as much notice as you can.
-- Tell us immediately about anything that affects safety, food quality or customers: allergies, complaints, faulty equipment, low stock, injuries.
-- Speak up. If something worries you, or you have an idea to do things better, we want to hear it. You can always talk to the manager privately.
-- Keep work group chats for work, and be kind in them. Check messages from the shop on your work days.
+在 Parsley，我們不要求每個人都完美。我們知道錯誤會發生，學習需要時間，而每個人都有成長的空間。
 
-## 4. Recipes, methods and confidential information
-Our recipes and methods are the heart of {company}. They took years of work and they are what make us different. They are trade secrets, protected by the Trade Secrets Act (營業秘密法).
+我們希望你在這裡不只是一位員工，更是團隊的一份子。
 
-Confidential information includes:
-- recipes, ingredients, quantities, doughs, sauces and preparation methods;
-- techniques, cooking times and temperatures, production processes and kitchen notes;
-- suppliers, purchase prices, costs, sales figures and business plans;
-- customer information and anything else you learn at work that is not public.
+我們重視誠實、尊重、責任感與合作精神。以下守則是為了讓每個人都能在安全、公平、愉快的環境中工作，也讓我們共同努力建立的品牌與品質得到保護。
 
-You agree to:
-- **not copy, photograph, film, record or write down** recipes or methods for yourself, unless the manager asks you to;
-- **not share** them with anyone outside the shop: not friends, family, other businesses or online. This includes social media, chats, video and AI tools;
-- use them **only to do your work here**, never for yourself or another business;
-- return or delete any notes, files, recipe cards or photos from work when you leave, or whenever we ask.
+請仔細閱讀以下內容。如有任何不清楚的地方，隨時向主管詢問。
 
-This duty continues **after your job ends**, with no time limit. Leaking our recipes or methods can lead to immediate dismissal and to a claim for the damage caused.
+歡迎加入我們，一起做好每一份甜點！
 
-## 5. Hygiene and food safety
-- Wash your hands when you arrive, after breaks, after touching raw food, rubbish or your phone, and whenever needed.
-- Wear a clean uniform or apron. Tie back long hair or cover it. Keep nails short and clean. Remove jewellery that could fall into food.
-- If you have a fever, vomiting, diarrhoea or an infected wound, **tell the manager before your shift**. Do not handle food until you have recovered.
-- Follow our rules for labelling, dates, storage temperatures and allergens. If you are not sure, ask. Never guess about allergens.
+## 01. 誠實與責任
+我們相信，信任是團隊合作的基礎。
 
-## 6. At work
-- Arrive on time and ready to work, in uniform.
-- Personal phones are kept away during service, and used only on breaks or in an emergency.
-- No alcohol or drugs before or during work.
-- Use knives, machines and equipment carefully and only as you were trained. Report any injury, even a small one, the same day.
-- Take care of the shop as if it were your own.
+1. 上下班打卡必須由本人操作，不得代替其他員工打卡，也不得要求他人代為打卡。
+2. 必須誠實處理現金、訂單、庫存、原料及公司物品。不得私自拿取、挪用或隱瞞任何款項或物品。
+3. 如果發生錯誤，例如製作失誤、訂單錯誤、商品損壞、原料浪費或金額不符，請立即向主管報告。
+4. 未經主管同意，不得將任何商品、原料、工具、包材或公司財物帶離工作場所，即使是剩餘或即將丟棄的物品也一樣。
+5. 不得偽造工作紀錄、庫存紀錄、訂單資料或其他公司文件。
 
-## 7. Social media and our image
-- You are welcome to share that you work at {company} and to post finished dishes as they are served to customers.
-- Do not post the kitchen, preparations, recipes, documents, colleagues or customers without permission.
-- Never speak on behalf of {company}, or reply publicly to reviews or complaints, unless the manager asks you to.
+## 02. 合作與尊重
+我們是一個團隊，不是彼此競爭的對手。
 
-## 8. If these rules are not followed
-We prefer to solve problems by talking. Usually the first step is a friendly conversation, then a written warning if the problem continues.
+1. 尊重每一位同事，不論職位、年齡、經驗或工作內容。
+2. 工作忙碌時互相協助，不得故意忽視同事的合理工作需求。
+3. 禁止霸凌、騷擾、歧視、威脅、羞辱或任何使他人感到不安全的行為。
+4. 不得散播惡意謠言、故意製造衝突或破壞團隊合作。
+5. 每次工作結束後，必須清潔並整理自己的工作區域、工具及設備。
+6. 使用完公共設備及空間後，應恢復整潔，讓下一位同事可以正常使用。
 
-Serious breaches can lead to immediate dismissal under the Labor Standards Act, article 12 (勞動基準法第12條). Examples:
-- theft or dishonesty with money, time records or stock;
-- leaking recipes or confidential information;
-- violence, threats, or serious harassment;
-- deliberately endangering food safety.
+## 03. 溝通與出勤
+良好的溝通可以避免許多不必要的問題。
 
-## 9. Our promise to you
-In return, {company} promises to:
-- treat you fairly and with respect, and pay you correctly and on time;
-- train you properly and share our craft with you;
-- listen when you raise a concern, without blame;
-- keep your personal information private;
-- follow Taiwan's labour laws.
+1. 如有遲到、無法上班或突發狀況，請盡早通知主管，不要等到上班時間才告知。
+2. 請假必須依照公司規定，透過指定的請假系統或 App 提出申請，並依相關規定完成通知程序。
+3. 不得未經通知或未經核准而自行缺勤，但依法得請假或有緊急情況者，應依相關規定處理。
+4. 如果工作中遇到困難、不確定如何操作，或發現可能影響品質、安全及生產的問題，請主動提出。
+5. 主管與員工之間應保持開放溝通。如有意見、建議或工作上的疑慮，可以直接提出。
 
-If anything in this agreement is unclear, please ask before you sign. Thank you for being part of the team. Let's make every plate something we're proud of!`,
-  body_zh: `歡迎加入{company}團隊！我們是一間小店，但標準很高。我們用義大利式的熱情料理與服務，而這一切必須建立在彼此信任之上。本同意書說明我們對每一位同仁（包括管理者）的期待。請仔細閱讀；簽署即表示你已了解並同意遵守。
+## 04. 配方、製作技術與營業秘密
+我們的配方與製作技術，是 Parsley 多年努力累積的重要資產。
 
-## 一、誠實
-- **只為自己打卡**，並且只在實際開始或結束工作時打卡。不得替同事打卡，也不得請別人替你打卡。
-- 處理現金、刷卡、庫存及食材時務必誠實，每一筆銷售、折扣及退款都要正確記錄。
-- 未經同意，任何東西都不得帶離店內，包括食物、飲料、食材、器具或包材。員工餐依照主管告知的規定。
-- 犯錯是正常的。請立刻回報（打破餐具、出錯單、帳款短溢、整批烤焦等）。隱瞞錯誤遠比錯誤本身嚴重。
-- 你提供給我們的資訊（請假、病假、個人資料）必須真實。
+**本條款特別重要，請務必仔細閱讀。**
 
-## 二、合作與尊重
-- 我們是一個團隊。互相幫忙，特別是在忙碌的時候，即使那不是「你的工作」。
-- 以尊重的態度對待同事、顧客及廠商。不容許大聲咆哮、辱罵、霸凌、歧視，以及任何形式的騷擾（包括性騷擾）。
-- 離開工作區前保持乾淨整齊，讓下一位同事可以直接接手。完成收班工作後再打卡下班。
-- 請遵從主管或當班負責人的指示。若有不同意見，事後再冷靜、私下提出。
-- 同事之間的意見不合以溝通解決，絕不在顧客面前爭執。
+1. 公司提供或員工於工作中接觸、學習或取得的配方、比例、製作程序、技術、操作方法、供應商資訊、成本資料及其他非公開營業資訊，均應受到保護。
+2. 未經公司事前書面同意，不得：
+  - 拍攝或錄影公司配方、製作流程及內部文件。
+  - 複製、下載、抄寫或帶走配方及相關資料。
+  - 將配方、製作技術或營業資訊提供給第三人。
+  - 在私人社群媒體、網站、論壇或其他平台公開相關資訊。
+  - 將公司機密資料輸入 ChatGPT、Gemini、Claude 或其他 AI 工具。
+  - 使用個人手機、電腦、雲端硬碟或私人帳號儲存公司機密資料。
+3. 公司資料僅能用於經授權的工作目的，不得用於個人營利、私人接案或其他未經許可的用途。
+4. 離職時，員工必須歸還所有公司文件、配方、紀錄、設備及其他資料，並停止使用任何公司機密資訊。
+5. 保密義務不因離職、解僱或勞動契約終止而消失。對於依法構成營業秘密的資訊，保密義務持續至該資訊不再具備營業秘密的法律要件為止。其他依法應保密的資訊，則依相關法律及約定處理。
+6. 本條款依台灣《營業秘密法》及其他相關法律訂定。員工理解，符合營業秘密法定要件的資訊，可能受到法律保護。
+7. 如員工發現配方、資料或其他機密資訊遭到未經授權的使用、外洩或存取，應立即通知主管。
 
-## 三、溝通
-- 如果會遲到或無法上班，請**盡早**、在班表開始前以電話或訊息告知主管。未告知而缺勤屬嚴重違規。
-- 請假請透過 App 申請，並盡可能提早提出。
-- 任何影響安全、食品品質或顧客的事情，請立即告知：過敏、客訴、設備故障、庫存不足、受傷等。
-- 勇於表達。有任何擔心，或有讓工作更好的想法，我們都想聽。你隨時可以私下找主管談。
-- 工作群組只用於工作相關事務，並保持友善。上班日請留意店內的訊息。
+## 05. 衛生與食品安全
+我們對食品品質與顧客安全負有責任。
 
-## 四、食譜、作法與機密資訊
-我們的食譜與作法是{company}的核心，是多年心血的結晶，也是我們與眾不同的原因。這些屬於營業秘密，受《營業秘密法》保護。
+1. 上班期間必須保持個人清潔，穿著公司規定的工作服、圍裙及必要的防護用品。
+2. 製作食品前、如廁後、接觸垃圾、生食、清潔用品或其他可能造成污染的物品後，必須正確洗手。
+3. 工作時必須遵守食品安全規範，包括原料保存、溫度控制、交叉污染預防、清潔及消毒程序。
+4. 不得使用已過期、變質、受污染或來源不明的原料。
+5. 如有發燒、嘔吐、腹瀉、傳染性疾病或其他可能影響食品安全的症狀，必須立即通知主管。
+6. 發現設備故障、蟲害、污染、異物或食品安全疑慮時，應立即停止相關作業並通知主管。
+7. 未經授權，不得自行更改配方、原料、保存方式、標示或製作程序。
+8. 必須遵守公司制定的清潔、消毒及食品安全作業程序。
 
-機密資訊包括：
-- 食譜、食材、配方比例、麵團、醬汁及製作方法；
-- 技巧、烹調時間與溫度、生產流程及廚房筆記；
-- 供應商、進貨價格、成本、營業額及營運計畫；
-- 顧客資料，以及其他在工作中得知、未公開的資訊。
+## 06. 工作場所行為
+專業不只是技術，也包括工作態度。
 
-你同意：
-- 除非主管要求，**不得抄寫、拍照、錄影、錄音或私下記錄**食譜及作法；
-- **不得洩漏**給店外任何人，包括親友、其他店家或網路上，也包括社群媒體、聊天群組、影片及 AI 工具；
-- **僅限於在本店工作時使用**，不得為自己或其他商家使用；
-- 離職時，或我們要求時，歸還或刪除所有與工作相關的筆記、檔案、食譜卡或照片。
+1. 上班期間應專注於工作，不得長時間處理私人事務或從事與工作無關的活動。
+2. 未經主管同意，不得在工作時間長時間使用私人手機、觀看影片或玩遊戲。
+3. 工作場所禁止飲酒、吸毒或在受酒精及其他影響工作安全的物質作用下工作。
+4. 未經許可，不得帶親友或其他非工作人員進入生產及工作區域。
+5. 必須正確使用設備、工具及機器，不得故意損壞或不當操作。
+6. 不得在工作場所從事違法、危險或影響公司正常營運的行為。
+7. 應遵守主管合理且合法的工作指示。
 
-此保密義務**於離職後仍然有效**，沒有期限。洩漏食譜或作法，可能導致立即解僱，並須賠償所造成的損害。
+## 07. 社群媒體與對外發言
+我們每個人的行為，都可能影響 Parsley 的品牌形象。
 
-## 五、衛生與食品安全
-- 到班時、休息後、接觸生食、垃圾或手機後，以及任何需要時，都要洗手。
-- 穿著乾淨的制服或圍裙；長髮需綁起或包覆；指甲保持短而乾淨；取下可能掉入食物中的飾品。
-- 若有發燒、嘔吐、腹瀉或傷口感染，**請在上班前告知主管**。康復前不得接觸食物。
-- 遵守標示、日期、儲存溫度及過敏原的規定。不確定時請詢問，過敏原的問題絕不可以猜。
+1. 未經公司同意，不得以公司名義發布聲明、承諾、促銷活動或對外公告。
+2. 不得公開公司內部資訊、配方、製作流程、成本、客戶資料、員工個人資料或其他機密資訊。
+3. 未經同意，不得拍攝或發布工作場所、內部文件、同事或生產過程的照片及影片，尤其不得洩露機密資訊。
+4. 不得在社群媒體上發布故意捏造、惡意或具有誤導性的內容，冒用公司名義或損害他人權益。
+5. 如遇到顧客投訴、媒體詢問或其他需要代表公司回應的情況，請交由主管處理。
+6. 員工依法享有個人言論自由及其他合法權益。本條款不限制依法受保障的言論、申訴、檢舉或勞動權益。
 
-## 六、工作時
-- 準時到班，穿好制服，準備好工作。
-- 營業時間請將個人手機收好，僅在休息或緊急情況時使用。
-- 上班前及上班中不得飲酒或使用毒品。
-- 依照所受的訓練小心使用刀具、機器與設備。任何受傷，即使是小傷，也請當天回報。
-- 像愛護自己的店一樣愛護這家店。
+## 08. 違反規定的處理方式
+我們希望問題能透過溝通與改善來解決，但每個人也必須為自己的行為負責。
 
-## 七、社群媒體與店家形象
-- 歡迎分享你在{company}工作，也可以分享上桌給顧客的成品照片。
-- 未經同意，不得張貼廚房、備料過程、食譜、文件、同事或顧客的照片或影片。
-- 除非主管要求，不得代表{company}發言，也不得公開回覆評論或客訴。
+1. 如發現違反本守則的情況，公司會依事件性質、嚴重程度、發生原因及相關事實進行了解。
+2. 對於一般或輕微違規，公司原則上採取以下處理方式：
+  - 第一次：主管與員工溝通，說明問題並要求改善。
+  - 再次發生：視情況給予書面警告，並說明需要改善的事項。
+  - 持續發生：依違規情況及相關法律規定進一步處理。
+3. 對於重大違規，例如偷竊、故意偽造紀錄、嚴重違反食品安全規定、霸凌、騷擾、故意破壞公司財物或洩漏營業秘密，公司得依法律及具體情況採取適當處理。
+4. 如員工的行為符合《勞動基準法》第12條所列法定事由，公司得依法終止勞動契約，無須預告。但必須符合相關法律要件及法定期限。
+5. 公司會依據客觀事實處理事件，並給予員工適當說明及陳述意見的機會。
+6. 不論任何情況，公司都不會以本守則作為違法扣薪、任意罰款或剝奪員工法定權益的依據。
 
-## 八、違反守則時
-我們希望透過溝通解決問題。通常第一步是友善的談話；若問題持續，則給予書面警告。
+## 09. 我們對你的承諾
+這份守則不只是員工的責任，也是 Parsley 對團隊的承諾。
 
-嚴重違規可能依《勞動基準法》第12條立即終止勞動契約。例如：
-- 在金錢、出勤紀錄或庫存上偷竊或不誠實；
-- 洩漏食譜或機密資訊；
-- 暴力、威脅或嚴重騷擾；
-- 故意危害食品安全。
+我們承諾：
 
-## 九、我們對你的承諾
-相對地，{company}承諾：
-- 公平、尊重地對待你，並正確、準時地支付薪資；
-- 好好訓練你，與你分享我們的手藝；
-- 當你提出疑慮時，認真傾聽，不加指責；
-- 保護你的個人資料；
-- 遵守台灣勞動法令。
+1. 公平對待每一位員工，不因個人背景、年齡、性別或其他因素而有不合理的差別待遇。
+2. 依照勞動契約及相關法律，準時支付薪資及應有的報酬。
+3. 提供必要的工作訓練、指導及合理的工作支持。
+4. 尊重每一位員工的隱私，妥善保護個人資料。
+5. 建立安全、衛生、尊重且沒有霸凌與騷擾的工作環境。
+6. 願意聆聽員工的意見、建議及合理的工作需求。
+7. 鼓勵員工學習、進步，並在工作中發展自己的能力。
 
-如果本同意書有任何不清楚的地方，請在簽署前提出。謝謝你成為團隊的一份子，讓我們一起做出每一道值得驕傲的料理！`,
+## 員工閱讀與簽署確認
+本人確認：
+
+1. 已閱讀並理解本《員工行為守則暨保密同意書》的全部內容。
+2. 有機會就不清楚的條款向公司詢問，並已理解相關規定。
+3. 同意在任職期間遵守本守則及公司合法、合理的工作規定。
+4. 理解並同意妥善保護公司依法應保密的配方、技術及營業秘密。
+5. 理解保密義務在勞動關係終止後，仍依本文件及相關法律繼續有效。
+6. 理解本文件不取代勞動契約，也不限制本人依法享有的任何勞動權益。`,
+  body_en: `Welcome to the team!
+
+We believe great desserts come from good ingredients, careful craftsmanship, and people who support one another.
+
+At Parsley, we don't expect anyone to be perfect. Mistakes happen, learning takes time, and everyone deserves the opportunity to grow.
+
+We hope you will feel that you are not simply an employee, but an important part of our team.
+
+We value honesty, respect, responsibility, and cooperation. These guidelines are here to help everyone work in a safe, fair, and positive environment, while protecting the quality, knowledge, and brand we are building together.
+
+Please read the following carefully. If anything is unclear, you are always welcome to ask your manager.
+
+Welcome aboard. Let's make something wonderful together!
+
+## 01. Honesty & Responsibility
+Honesty is the foundation of trust.
+
+1. Employees must clock in and out personally. Clocking in or out on behalf of another employee, or asking someone else to do so, is prohibited.
+2. Handle cash, orders, inventory, ingredients, and company property honestly. Taking, using, or concealing company money or property without authorization is prohibited.
+3. Report mistakes to your manager immediately, including production errors, incorrect orders, damaged products, wasted ingredients, or cash discrepancies.
+4. Nothing may be taken out of the workplace without management approval, including products, ingredients, tools, packaging, or company property, even if they are leftover or intended for disposal.
+5. Falsifying attendance records, inventory records, order information, or other company documents is prohibited.
+
+## 02. Cooperation & Respect
+We are a team, not competitors.
+
+1. Treat every colleague with respect, regardless of position, age, experience, or responsibilities.
+2. Support one another during busy periods. Do not deliberately ignore reasonable requests for assistance.
+3. Bullying, harassment, discrimination, threats, humiliation, or any behavior that makes others feel unsafe is prohibited.
+4. Do not spread malicious rumors, deliberately create conflict, or undermine teamwork.
+5. Clean and organize your workstation, tools, and equipment after completing your work.
+6. Leave shared equipment and spaces clean and ready for the next person.
+
+## 03. Communication & Attendance
+Good communication prevents unnecessary problems.
+
+1. If you will be late, unable to attend work, or facing an unexpected situation, inform your manager as early as possible. Do not wait until your scheduled starting time.
+2. Leave requests must be submitted through the designated company leave system or app and follow the applicable notification procedures.
+3. Do not be absent without notifying the company or following the required procedures. Statutory leave and genuine emergencies will be handled in accordance with applicable law.
+4. If you encounter difficulties, are unsure how to perform a task, or notice a potential problem affecting quality, safety, or production, speak up.
+5. We encourage open communication between managers and employees. Questions, suggestions, and workplace concerns are always welcome.
+
+## 04. Recipes, Production Methods & Trade Secrets
+Our recipes and production methods are valuable assets built through years of hard work.
+
+**This section is particularly important. Please read it carefully.**
+
+1. Recipes, ingredient ratios, production procedures, techniques, operating methods, supplier information, costing information, and other non-public business information provided by or accessed, learned, or obtained through employment must be protected.
+2. Without prior written authorization from the company, employees must not:
+  - Photograph or record company recipes, production processes, or internal documents.
+  - Copy, download, transcribe, or remove recipes or related materials.
+  - Share recipes, production techniques, or business information with third parties.
+  - Publish such information on personal social media, websites, forums, or other platforms.
+  - Enter confidential company information into ChatGPT, Gemini, Claude, or other AI tools.
+  - Store confidential company information on personal phones, computers, cloud drives, or private accounts.
+3. Company information may only be used for authorized work purposes. It must not be used for personal profit, private business, or any unauthorized purpose.
+4. Upon leaving the company, employees must return all company documents, recipes, records, equipment, and other materials, and stop using confidential company information.
+5. Confidentiality obligations do not end when employment ends. For information that legally qualifies as a trade secret, the obligation continues for as long as the information meets the legal requirements for trade secret protection. Other confidential information remains protected as required by applicable laws and agreements.
+6. This section is established with reference to Taiwan's Trade Secrets Act and other applicable laws. Employees acknowledge that information meeting the legal requirements may receive legal protection.
+7. If you discover any unauthorized use, disclosure, or access involving recipes, records, or other confidential information, notify your manager immediately.
+
+## 05. Hygiene & Food Safety
+We are responsible for the quality of our food and the safety of our customers.
+
+1. Maintain personal hygiene and wear the required company uniform, apron, and protective equipment.
+2. Wash your hands properly before handling food, after using the restroom, and after handling waste, raw ingredients, cleaning products, or anything that may cause contamination.
+3. Follow all food safety procedures, including ingredient storage, temperature control, cross-contamination prevention, cleaning, and sanitation.
+4. Never use expired, spoiled, contaminated, or unidentified ingredients.
+5. If you experience fever, vomiting, diarrhea, an infectious illness, or any other condition that may affect food safety, inform your manager immediately.
+6. If you notice equipment failure, pests, contamination, foreign objects, or any food safety concern, stop the affected operation and notify your manager immediately.
+7. Do not change recipes, ingredients, storage methods, labels, or production procedures without authorization.
+8. Follow all company cleaning, sanitation, and food safety procedures.
+
+## 06. Professional Conduct at Work
+Professionalism is not only about skill. It is also about attitude.
+
+1. Stay focused on your responsibilities during working hours. Avoid spending excessive time on personal matters or activities unrelated to work.
+2. Do not use personal phones for extended periods, watch videos, or play games during working hours without management approval.
+3. Alcohol and illegal drugs are prohibited in the workplace. Employees must never work under the influence of alcohol or any substance that compromises workplace safety.
+4. Do not bring friends, family members, or other unauthorized visitors into production or work areas.
+5. Use all equipment, tools, and machinery properly. Deliberate damage or misuse is prohibited.
+6. Do not engage in illegal, dangerous, or disruptive activities at the workplace.
+7. Follow reasonable and lawful work instructions from your manager.
+
+## 07. Social Media & Public Communication
+Our individual actions can affect the Parsley brand.
+
+1. Do not make statements, promises, promotional announcements, or public announcements on behalf of the company without authorization.
+2. Do not disclose internal company information, recipes, production methods, costs, customer information, employee personal information, or other confidential information.
+3. Do not photograph or publish images or videos of the workplace, internal documents, colleagues, or production activities without authorization, especially where confidential information may be revealed.
+4. Do not deliberately publish fabricated, malicious, or misleading content using the company's identity or in a way that infringes on the rights of others.
+5. Refer customer complaints, media inquiries, or other requests requiring an official company response to your manager.
+6. Employees retain their lawful rights to freedom of expression, complaints, reporting, and protection of labor rights. Nothing in this section is intended to restrict rights protected by law.
+
+## 08. Handling Violations of Company Rules
+We prefer to resolve problems through communication and improvement, but everyone must also take responsibility for their actions.
+
+1. When a violation is reported or discovered, the company will review the circumstances, seriousness, reasons, and relevant facts.
+2. For ordinary or minor violations, the company will generally follow this process:
+  - First occurrence: A conversation with the manager to explain the issue and request improvement.
+  - Repeated occurrence: A written warning may be issued, explaining the required improvements.
+  - Continued violations: Further action may be taken according to the circumstances and applicable laws.
+3. For serious violations, including theft, deliberate falsification of records, serious food safety violations, bullying, harassment, deliberate damage to company property, or disclosure of trade secrets, the company may take appropriate action in accordance with applicable laws and the circumstances.
+4. If an employee's conduct meets the statutory grounds under Article 12 of Taiwan's Labour Standards Act, the company may terminate the employment contract without advance notice, provided all applicable legal requirements and deadlines are satisfied.
+5. The company will assess incidents based on objective facts and provide employees with an appropriate opportunity to explain their actions and present their views.
+6. Under no circumstances will this agreement be used as a basis for unlawful wage deductions, arbitrary fines, or the denial of employees' statutory rights.
+
+## 09. Our Promise to You
+This agreement is not only about employee responsibilities. It is also about Parsley's commitment to its team.
+
+We promise to:
+
+1. Treat every employee fairly and avoid unreasonable discrimination based on personal background, age, gender, or other factors.
+2. Pay salaries and other compensation on time in accordance with employment agreements and applicable laws.
+3. Provide necessary job training, guidance, and reasonable workplace support.
+4. Respect every employee's privacy and protect personal information appropriately.
+5. Maintain a safe, hygienic, respectful workplace free from bullying and harassment.
+6. Listen to employees' opinions, suggestions, and reasonable workplace needs.
+7. Encourage employees to learn, improve, and develop their abilities.
+
+## Employee Acknowledgment & Agreement
+I acknowledge that:
+
+1. I have read and understood the entire Staff Code of Conduct & Confidentiality Agreement.
+2. I have had the opportunity to ask questions about any unclear provisions and understand the relevant requirements.
+3. I agree to follow these guidelines and the company's lawful and reasonable workplace rules during my employment.
+4. I understand and agree to protect the company's legally confidential recipes, techniques, and trade secrets.
+5. I understand that confidentiality obligations continue after the end of employment as provided in this agreement and applicable laws.
+6. I understand that this document does not replace my employment contract or limit any labor rights protected by law.`,
 };

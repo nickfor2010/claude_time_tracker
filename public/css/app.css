@@ -542,3 +542,6 @@ dialog.dlg-doc { width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh 
 .doc-signed { margin-top: 18px; }
 dialog.dlg-doc form.doc-dlg { padding: 0; gap: 0; }
 .doc-foot .err:empty { display: none; }
+.doc ol { margin: 0 0 10px; padding-left: 22px; }
+.doc ol > li::marker { color: var(--primary); font-weight: 700; }
+.doc li > ul { margin: 6px 0 4px; padding-left: 18px; list-style: disc; }
