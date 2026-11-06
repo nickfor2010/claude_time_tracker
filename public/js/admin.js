@@ -18,15 +18,18 @@ let liveTimer;
 // ---------- auth ----------
 async function boot() {
   try {
+    if (!$('#boot').classList.contains('hidden')) $('#page').innerHTML = pageSkeleton();
     state.data = await api('/api/admin/overview');
     setTimezone(state.data.timezone);
     state.month ||= state.data.today.slice(0, 7);
+    $('#boot').classList.add('hidden');
     $('#login').classList.add('hidden');
     $('#admin').classList.remove('hidden');
     buildNav();
     go(location.hash.slice(1) || 'overview');
   } catch (e) {
     if (e.status !== 401) toast(e.message, true);
+    $('#boot').classList.add('hidden');
     $('#admin').classList.add('hidden');
     $('#login').classList.remove('hidden');
     $('#pw').focus();
@@ -47,6 +50,15 @@ $('#logout-m').onclick = logout;
 $('#logout-m').innerHTML = icons.logout;
 document.querySelectorAll('[data-icon]').forEach((b) => b.insertAdjacentHTML('afterbegin', icons[b.dataset.icon]));
 
+// Grey shimmering placeholders shown while a page loads
+function pageSkeleton() {
+  const card = (w) => `<div class="skel-card"><i class="skel" style="width:${w}%"></i><i class="skel" style="width:90%"></i><i class="skel" style="width:70%"></i></div>`;
+  return `<div class="page-skel" aria-busy="true" aria-label="${t('Loading…')}">
+    <div class="skel-head"><i class="skel" style="width:220px;height:28px"></i><i class="skel" style="width:320px"></i></div>
+    <div class="skel-grid">${card(40)}${card(55)}${card(35)}${card(50)}</div>
+    <div class="skel-card tall">${[80, 95, 60, 90, 75, 85].map((w) => `<i class="skel" style="width:${w}%"></i>`).join('')}</div>
+  </div>`;
+}
 function buildNav() {
   const pending = state.data?.pendingLeave || 0;
   const html = PAGES.filter((p) => !p.hidden).map((p) => `<button data-page="${p.id}" class="${p.id === state.page ? 'active' : ''}">${icons[p.icon]}<span>${t(p.label)}</span>${p.id === 'timeoff' && pending ? `<span class="badge" aria-label="${t('{n} waiting', { n: pending })}">${pending}</span>` : ''}</button>`).join('');
@@ -56,6 +68,8 @@ function buildNav() {
 }
 async function go(page) {
   if (!PAGES.some((p) => p.id === page)) page = 'overview';
+  // Show placeholders straight away when switching pages, so the tap feels answered
+  if (page !== state.page || !$('#page').children.length) { $('#page').innerHTML = pageSkeleton(); $('#banner').innerHTML = ''; }
   state.page = page;
   if (location.hash.slice(1) !== page) history.replaceState(null, '', '#' + page);
   document.querySelectorAll('[data-page]').forEach((b) => b.classList.toggle('active', b.dataset.page === (page === 'history' ? 'timesheets' : page)));

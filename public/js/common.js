@@ -35,13 +35,42 @@ export const icons = {
   trash: I('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>'),
 };
 
+// ---------- loading feedback ----------
+// A thin animated bar at the top while any request is running (after a short delay, so quick ones don't flash),
+// and a spinner on the button that started a request.
+let pending = 0, barTimer;
+function loadingBar(on) {
+  let bar = document.querySelector('.load-bar');
+  if (!bar) { bar = document.createElement('div'); bar.className = 'load-bar'; bar.setAttribute('aria-hidden', 'true'); document.body.prepend(bar); }
+  if (on) { pending++; clearTimeout(barTimer); barTimer = setTimeout(() => pending && bar.classList.add('on'), 150); }
+  else if (--pending <= 0) { pending = 0; clearTimeout(barTimer); bar.classList.remove('on'); }
+}
+// Safari doesn't focus a tapped button, so remember the last one tapped (or pressed with Enter in a form)
+let lastTap = { b: null, at: 0 };
+addEventListener('click', (e) => { const b = e.target.closest?.('button'); if (b) lastTap = { b, at: Date.now() }; }, true);
+addEventListener('submit', (e) => { if (e.submitter) lastTap = { b: e.submitter, at: Date.now() }; }, true);
+function busyButton() {
+  const b = Date.now() - lastTap.at < 1500 && lastTap.b?.isConnected ? lastTap.b : document.activeElement;
+  lastTap = { b: null, at: 0 };
+  if (!(b instanceof HTMLButtonElement) || b.classList.contains('punch') || b.closest('#pinpad')) return null;
+  b.classList.add('is-busy'); b.setAttribute('aria-busy', 'true');
+  return () => { b.classList.remove('is-busy'); b.removeAttribute('aria-busy'); };
+}
+
 export async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    method: opts.method || 'GET',
-    headers: opts.body ? { 'Content-Type': 'application/json' } : {},
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-    credentials: 'same-origin',
-  });
+  loadingBar(true);
+  const done = opts.method && opts.method !== 'GET' ? busyButton() : null;
+  let res;
+  try {
+    res = await fetch(path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw new Error(t('No connection — please try again.'));
+  } finally { loadingBar(false); done?.(); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { const e = new Error(t(data.error || `Error ${res.status}`)); e.status = res.status; throw e; }
   return data;

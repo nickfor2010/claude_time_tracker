@@ -640,6 +640,7 @@ const zh = {
   "Discard draft": "捨棄草稿",
   "Save draft": "儲存草稿",
   "Publish": "發布",
+  'Loading…': '載入中…',
 };
 
 export function getLang() {

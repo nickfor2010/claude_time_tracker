@@ -2,7 +2,7 @@ import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, money, t
 import { t, translatePage, langButton, isZh } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
-const views = ['team', 'pin', 'punch'];
+const views = ['loading', 'team', 'pin', 'punch'];
 const show = (v) => views.forEach((n) => $(`#view-${n}`).classList.toggle('hidden', n !== v));
 const TARGET_MS = 8 * 3600e3; // ring fills over an 8-hour day
 const RING = 691.15;
