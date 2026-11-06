@@ -1,4 +1,4 @@
-import { api, icons, esc, avatar, time, hm24, dur, hours, money, dayKey, dateLabel, worked, toast, setTimezone, clockNow, registerSW, pushStatus, enablePush, syncPush, leaveLabel, leaveRange, statusPill } from './common.js';
+import { api, icons, esc, avatar, time, hm24, dur, hours, money, dayKey, dateLabel, worked, toast, setTimezone, clockNow, registerSW, pushStatus, enablePush, syncPush, leaveLabel, leaveRange, statusPill, renderDoc, docText } from './common.js';
 import { t, translatePage, langButton, isZh } from './i18n.js';
 import { parseCSV, buildImport, TEMPLATE } from './csv-import.js';
 
@@ -67,6 +67,7 @@ async function refresh() {
     state.data = await api('/api/admin/overview');
     if (state.page === 'timesheets') await loadShifts();
     if (state.page === 'timeoff') state.leave = (await api('/api/admin/leave')).requests;
+    if (state.page === 'team') state.agreement = await api('/api/admin/agreement');
     if (state.page === 'timeoff' || state.page === 'team') state.balances = (await api('/api/admin/balances')).balances;
     if (state.page === 'payroll') state.payroll = await api(`/api/admin/payroll?month=${state.month}`);
   } catch (e) { if (e.status === 401) return boot(); toast(e.message, true); }
@@ -81,7 +82,12 @@ function render() {
   buildNav();
   const leaveBanner = d.pendingLeave && state.page !== 'timeoff'
     ? `<div class="banner banner-leave">${icons.plane}<span>${t(d.pendingLeave === 1 ? '1 time-off request is waiting for you.' : '{n} time-off requests are waiting for you.', { n: d.pendingLeave })}</span><button class="btn btn-sm btn-primary" data-goto="timeoff">${t('Review')}</button></div>` : '';
-  $('#banner').innerHTML = leaveBanner + forgotten.map((s) => `
+  const ag = d.agreement || {};
+  const agrBanner = state.page === 'overview' && ag.version && ag.unsigned?.length
+    ? `<div class="banner banner-leave">${icons.doc}<span>${t(ag.unsigned.length === 1 ? '1 person has not signed the staff agreement yet.' : '{n} people have not signed the staff agreement yet.', { n: ag.unsigned.length })}</span><button class="btn btn-sm btn-ghost" data-goto="team">${t('View')}</button></div>`
+    : state.page === 'overview' && !ag.version && ag.draft
+      ? `<div class="banner banner-leave">${icons.doc}<span>${t('A staff agreement is ready for you to review and publish.')}</span><button class="btn btn-sm btn-ghost" data-goto="team">${t('Review')}</button></div>` : '';
+  $('#banner').innerHTML = leaveBanner + agrBanner + forgotten.map((s) => `
     <div class="banner banner-warn" role="alert">${icons.alert}
       <span>${t('<b>{name}</b> has been clocked in for {dur} (since {since}). Forgot to clock out?', {
         name: esc(s.name), dur: `<b class="tnum" data-since="${s.clock_in}">${dur(d.now - s.clock_in)}</b>`,
@@ -874,6 +880,89 @@ function openQr() {
   $('#dlg-qr').showModal();
 }
 
+// ---------- staff agreement ----------
+const longDate = (ms) => dateLabel(dayKey(ms), { year: 'numeric', month: 'short', day: 'numeric' });
+function agreementCard() {
+  const A = state.agreement;
+  if (!A) return '';
+  const cur = A.published, people = A.people;
+  if (!cur) return `<div class="card agr-card"><div class="agr-top"><span class="tl-ico">${icons.doc}</span>
+    <div class="ttl"><b>${t('Staff agreement')}</b><span>${A.draft ? t('A draft is ready: code of conduct and confidentiality of recipes. Review it, adjust it, then publish it to the team.') : t('Write the rules of the shop and ask everyone to read and sign them.')}</span></div>
+    <div class="toolbar"><button class="btn btn-primary" id="agr-edit">${icons.edit} ${A.draft ? t('Review draft') : t('Write agreement')}</button></div></div></div>`;
+  const signed = people.filter((p) => p.signed_at).length;
+  const title = docText(cur, isZh()).title;
+  return `<div class="card agr-card">
+    <div class="agr-top"><span class="tl-ico">${icons.doc}</span>
+      <div class="ttl"><b>${esc(title)}</b><span>${t('Version {v} · published {date}', { v: cur.version, date: longDate(cur.published_at) })}${A.draft ? ` · <b style="display:inline">${t('draft of a new version saved')}</b>` : ''}</span></div>
+      <div class="toolbar">
+        ${signed < people.length ? `<button class="btn btn-primary btn-sm" id="agr-remind-all">${icons.bell} ${t('Remind all')}</button>` : ''}
+        <button class="btn btn-ghost btn-sm" id="agr-edit">${icons.edit} ${A.draft ? t('Edit draft') : t('Edit text')}</button>
+      </div></div>
+    <div><div style="display:flex;justify-content:space-between;font-size:13.5px;margin-bottom:6px"><span>${t('{n} of {total} signed', { n: signed, total: people.length })}</span>${signed === people.length && people.length ? `<span style="color:#1e7a3c;font-weight:600">${t('Everyone has signed')}</span>` : ''}</div>
+      <div class="agr-meter" role="img" aria-label="${t('{n} of {total} signed', { n: signed, total: people.length })}"><i style="width:${people.length ? (signed / people.length) * 100 : 0}%"></i></div></div>
+    <div class="agr-people">${people.map((p) => `<div class="agr-person">${avatar(p)}
+      <div class="who"><b>${esc(p.name)}</b>${p.signed_at ? `<span class="ok">✓ ${t('Signed {date}', { date: longDate(p.signed_at) })}</span>`
+        : `<span class="no">${p.last_version ? t('Signed version {v} · new version not yet', { v: p.last_version }) : t('Not signed yet')}</span>`}</div>
+      ${p.signed_at || p.last_version ? `<a class="btn btn-ghost btn-icon btn-sm" href="/agreement?emp=${p.id}" target="_blank" rel="noopener" title="${t('Print signed copy')}" aria-label="${t('Print signed copy')}">${icons.printer}</a>` : ''}
+      ${p.signed_at ? '' : `<button class="btn btn-ghost btn-icon btn-sm" data-agr-remind="${p.id}" title="${t('Send a reminder')}" aria-label="${t('Send a reminder')}">${icons.bell}</button>`}
+    </div>`).join('')}</div></div>`;
+}
+function wireAgreementCard() {
+  const remind = async (employee_id) => {
+    try { const r = await api('/api/admin/agreement/remind', { method: 'POST', body: { employee_id } }); toast(t(r.reminded === 1 ? 'Reminder sent' : 'Reminders sent to {n} people', { n: r.reminded })); }
+    catch (e) { toast(e.message, true); }
+  };
+  const all = $('#agr-remind-all');
+  if (all) all.onclick = () => remind();
+  $('#page').querySelectorAll('[data-agr-remind]').forEach((b) => (b.onclick = () => remind(Number(b.dataset.agrRemind))));
+  const ed = $('#agr-edit');
+  if (ed) ed.onclick = openAgreementEditor;
+}
+function openAgreementEditor() {
+  const A = state.agreement, cur = A.published;
+  const src = A.draft || cur || { title_en: '', title_zh: '', body_en: '', body_zh: '' };
+  const draft = { title_en: src.title_en, title_zh: src.title_zh, body_en: src.body_en, body_zh: src.body_zh };
+  let lang = isZh() ? 'zh' : 'en';
+  const dlg = $('#dlg-agr');
+  const store = () => { draft['title_' + lang] = $('#agr-title-in').value; draft['body_' + lang] = $('#agr-body-in').value; };
+  const preview = () => { $('#agr-preview-box').innerHTML = renderDoc(draft['body_' + lang]); };
+  const paint = () => {
+    $('#agr-title-in').value = draft['title_' + lang] || '';
+    $('#agr-body-in').value = draft['body_' + lang] || '';
+    $('#agr-langs').querySelectorAll('[data-l]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.l === lang)));
+    preview();
+  };
+  $('#agr-state').textContent = A.draft ? (cur ? t('Draft of version {v}', { v: cur.version + 1 }) : t('Draft')) : cur ? t('Editing creates version {v}', { v: cur.version + 1 }) : '';
+  $('#agr-langs').onclick = (ev) => { const b = ev.target.closest('[data-l]'); if (!b) return; store(); lang = b.dataset.l; paint(); };
+  $('#agr-body-in').oninput = () => { store(); if (!$('#agr-preview-box').classList.contains('hidden')) preview(); };
+  $('#agr-title-in').oninput = store;
+  $('#agr-preview').checked = false;
+  $('#agr-preview-box').classList.add('hidden');
+  $('#agr-preview').onchange = () => { $('#agr-preview-box').classList.toggle('hidden', !$('#agr-preview').checked); preview(); };
+  $('#agr-err').textContent = '';
+  $('#agr-discard').classList.toggle('hidden', !A.draft);
+  const save = async () => { store(); await api('/api/admin/agreement/draft', { method: 'PUT', body: draft }); };
+  $('#agr-save').onclick = async () => { try { await save(); toast(t('Draft saved')); dlg.close(); refresh(); } catch (e) { $('#agr-err').textContent = e.message; } };
+  $('#agr-cancel').onclick = () => dlg.close();
+  $('#agr-discard').onclick = async () => {
+    if (!confirm(t('Discard this draft? The published version stays as it is.'))) return;
+    try { await api('/api/admin/agreement/draft', { method: 'DELETE' }); dlg.close(); refresh(); } catch (e) { $('#agr-err').textContent = e.message; }
+  };
+  $('#form-agr').onsubmit = async (ev) => {
+    ev.preventDefault();
+    store();
+    if (!draft.body_en.trim() || !draft.body_zh.trim()) { if (!confirm(t('One language is empty. Staff will see the other language. Publish anyway?'))) return; }
+    if (!confirm(t(cur ? 'Publish version {v}? Everyone will be asked to read and sign it again.' : 'Publish the agreement? Everyone will be asked to read and sign it.', { v: (cur?.version || 0) + 1 }))) return;
+    try {
+      await save();
+      const r = await api('/api/admin/agreement/publish', { method: 'POST' });
+      toast(t('Version {v} published. The team has been notified.', { v: r.version })); dlg.close(); refresh();
+    } catch (e) { $('#agr-err').textContent = e.message; }
+  };
+  paint();
+  dlg.showModal();
+}
+
 // ---------- team ----------
 function renderTeam() {
   const d = state.data;
@@ -882,6 +971,7 @@ function renderTeam() {
       <div><h1>${t('Team')}</h1><p>${t('{n} active members. Each person signs in on their phone with a personal PIN.', { n: d.employees.filter((e) => e.active).length })}</p></div>
       <div class="toolbar"><button class="btn btn-ghost" id="tm-qr">${icons.qr} ${t('Install QR code')}</button><button class="btn btn-primary" id="tm-add">${icons.plus} ${t('Add team member')}</button></div>
     </div>
+    ${agreementCard()}
     <div class="team-cards">${d.employees.length ? d.employees.slice().sort((a, b) => b.active - a.active).map((e) => `
       <div class="card member ${e.active ? '' : 'inactive'}">
         <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${e.pay_type === 'monthly' ? `${money(e.monthly_salary)}/${t('month')}` : `${money(e.hourly_rate)}/${t('h')}`} · ${workDaysLabel(e.work_days)}${e.active ? '' : ' · ' + t('inactive')}</div></div>
@@ -896,6 +986,7 @@ function renderTeam() {
           : e.comp_status === 'active' ? `<span class="pill st-approved" style="justify-self:start"><span class="dot"></span>${t('補休: overtime banked')}${(() => { const c = (state.balances || []).find((x) => x.employee_id === e.id)?.comp?.balance; return c ? ' · ' + t('{n} h', { n: c.available }) : ''; })()}</span>` : ''}
         ${e.onShift ? `<span class="pill pill-live" style="justify-self:start"><span class="dot"></span>${t('On shift now')}</span>` : ''}
       </div>`).join('') : `<div class="card empty" style="grid-column:1/-1">${t("No team members yet. Add your first one — they'll appear on the time clock right away.")}</div>`}</div>`;
+  wireAgreementCard();
   $('#tm-add').onclick = () => openEmp();
   $('#tm-qr').onclick = openQr;
   $('#page').querySelectorAll('[data-emp]').forEach((b) => (b.onclick = () => openEmp(d.employees.find((e) => e.id === Number(b.dataset.emp)))));

@@ -327,6 +327,47 @@ test('full punch flow', async () => {
   await admin(`/api/admin/payroll/2027-01/${emp.id}/reopen`, { method: 'POST' });
   assert.equal((await admin(`/api/admin/leave/${paidId}/revoke`, { method: 'POST', body: {} })).status, 200);
 
+  // Staff agreement: default draft -> publish -> employee signs -> new version needs signing again
+  let ag = (await admin('/api/admin/agreement')).data;
+  assert.equal(ag.published, null);
+  assert.match(ag.draft.body_zh, /營業秘密法/);
+  assert.ok(!ag.draft.body_en.includes('{company}'));
+  assert.equal((await phone('/api/me')).data.agreement, null);
+  assert.equal((await admin('/api/admin/agreement/remind', { method: 'POST', body: {} })).status, 400);
+  assert.equal((await admin('/api/admin/agreement/draft', { method: 'PUT', body: { title_en: '', title_zh: '', body_en: 'x', body_zh: '' } })).status, 400);
+  assert.equal((await admin('/api/admin/agreement/draft', { method: 'PUT', body: { ...ag.draft, title_en: 'Code of Conduct' } })).status, 200);
+  assert.equal((await admin('/api/admin/agreement/publish', { method: 'POST' })).data.version, 1);
+  assert.equal((await admin('/api/admin/agreement/publish', { method: 'POST' })).status, 400); // no draft left
+  let myAg = (await phone('/api/me')).data.agreement;
+  assert.deepEqual([myAg.version, myAg.title_en, myAg.signed_at], [1, 'Code of Conduct', null]);
+  assert.deepEqual((await admin('/api/admin/overview')).data.agreement.unsigned.sort(), ['Mei', 'Vera']);
+  assert.equal((await admin('/api/admin/agreement/remind', { method: 'POST', body: {} })).data.reminded, 2);
+  assert.equal((await admin('/api/admin/agreement/remind', { method: 'POST', body: { employee_id: emp.id } })).data.reminded, 1);
+  assert.equal((await admin(`/api/admin/agreement/signed/${emp.id}`)).status, 404);
+  assert.equal((await phone('/api/me/agreement/sign', { method: 'POST', body: { id: myAg.id, agree: false, name: 'Vera Rossi' } })).status, 400);
+  assert.equal((await phone('/api/me/agreement/sign', { method: 'POST', body: { id: myAg.id, agree: true, name: ' ' } })).status, 400);
+  assert.equal((await phone('/api/me/agreement/sign', { method: 'POST', body: { id: myAg.id + 99, agree: true, name: 'Vera Rossi' } })).status, 400);
+  assert.equal((await phone('/api/me/agreement/sign', { method: 'POST', body: { id: myAg.id, agree: true, name: 'Vera  Rossi' } })).status, 200);
+  assert.equal((await phone('/api/me/agreement/sign', { method: 'POST', body: { id: myAg.id, agree: true, name: 'Vera Rossi' } })).status, 400); // once
+  assert.ok((await phone('/api/me')).data.agreement.signed_at);
+  ag = (await admin('/api/admin/agreement')).data;
+  assert.equal(ag.people.find((x) => x.id === emp.id).signed_name, 'Vera Rossi');
+  assert.deepEqual((await admin('/api/admin/overview')).data.agreement.unsigned, ['Mei']);
+  const copy = (await admin(`/api/admin/agreement/signed/${emp.id}`)).data;
+  assert.deepEqual([copy.agreement.version, copy.signature.signed_name], [1, 'Vera Rossi']);
+  assert.equal((await client()('/api/admin/agreement')).status, 401);
+  // version 2: everyone signs again; the old signature is kept
+  await admin('/api/admin/agreement/draft', { method: 'PUT', body: { ...ag.published, body_en: ag.published.body_en + '\n\n## 10. New rule\n- Be kind.' } });
+  assert.equal((await admin('/api/admin/agreement/publish', { method: 'POST' })).data.version, 2);
+  assert.equal((await phone('/api/me')).data.agreement.signed_at, null);
+  assert.equal((await phone('/api/me/agreement/sign', { method: 'POST', body: { id: myAg.id, agree: true, name: 'Vera Rossi' } })).status, 400); // old id
+  const person = (await admin('/api/admin/agreement')).data.people.find((x) => x.id === emp.id);
+  assert.deepEqual([person.signed_at, person.last_version], [null, 1]);
+  // discard a draft
+  await admin('/api/admin/agreement/draft', { method: 'PUT', body: { title_en: 'x', title_zh: '', body_en: 'y', body_zh: '' } });
+  assert.equal((await admin('/api/admin/agreement/draft', { method: 'DELETE' })).status, 200);
+  assert.equal((await admin('/api/admin/agreement')).data.draft, null);
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

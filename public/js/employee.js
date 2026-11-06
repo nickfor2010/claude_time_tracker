@@ -1,5 +1,5 @@
-import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, money, toast, registerSW, setTimezone, clockNow, pushStatus, enablePush, syncPush, LEAVE_TYPES, leaveLabel, leaveRange, statusPill } from './common.js';
-import { t, translatePage, langButton } from './i18n.js';
+import { api, icons, esc, avatar, time, dur, dayKey, dateLabel, worked, money, toast, registerSW, setTimezone, clockNow, pushStatus, enablePush, syncPush, LEAVE_TYPES, leaveLabel, leaveRange, statusPill, renderDoc, docText } from './common.js';
+import { t, translatePage, langButton, isZh } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
 const views = ['team', 'pin', 'punch'];
@@ -108,6 +108,8 @@ async function loadMe() {
     show('punch');
     paintClock();
     if (location.hash === '#timeoff') { history.replaceState(null, '', '/'); $('#timeoff').scrollIntoView({ behavior: 'smooth' }); }
+    if (location.hash === '#agreement') { history.replaceState(null, '', '/'); if (me.agreement) openAgreement(); }
+    else if (me.agreement && !me.agreement.signed_at && !$('#dlg-agr').open && !askedThisVisit()) openAgreement();
     if (location.hash === '#comp') { history.replaceState(null, '', '/'); ($('#comp') || $('#my-comp')).scrollIntoView({ behavior: 'smooth' }); }
   } catch (e) {
     if (e.status === 401) return showTeam();
@@ -149,6 +151,7 @@ function renderPunch() {
       <div class="tl-dur">${dur(worked(s))}</div>
     </div>`).join('') : `<div class="empty">${t('Your past shifts will appear here.')}</div>`;
 
+  renderAgreementAsk();
   renderLeave();
   renderPayslips();
   paintLive();
@@ -197,8 +200,81 @@ function openAccount() {
     $('#dlg-me').close();
     showTeam();
   };
+  const a = me.agreement;
+  $('#me-agr').classList.toggle('hidden', !a);
+  if (a) {
+    $('#me-agr-status').textContent = a.signed_at ? t('Signed on {date} (version {v})', { date: dateLabel(dayKey(a.signed_at), { year: 'numeric', month: 'short', day: 'numeric' }), v: a.version }) : t('Not signed yet');
+    $('#me-agr-open').onclick = () => { $('#dlg-me').close(); openAgreement(); };
+  }
   $('#me-close').onclick = () => $('#dlg-me').close();
   $('#dlg-me').showModal();
+}
+
+// ---------- staff agreement ----------
+// Opens by itself once per visit until signed; the card stays until then.
+function askedThisVisit() {
+  try { if (sessionStorage.getItem('agr-asked') === String(me.agreement.id)) return true; sessionStorage.setItem('agr-asked', String(me.agreement.id)); } catch {}
+  return false;
+}
+function renderAgreementAsk() {
+  const a = me.agreement, box = $('#agreement-ask');
+  if (!a || a.signed_at) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="notice doc-ask" role="alert"><span class="ico">${icons.doc}</span>
+    <div><b>${t('Please read and sign: {title}', { title: esc(docText(a, isZh()).title) })}</b>
+      <div class="s">${t('Everyone on the team reads it and confirms. It takes about 5 minutes.')}</div>
+      <div class="settle-acts"><button class="btn btn-primary btn-sm" id="agr-read">${t('Read and sign')}</button></div></div></div>`;
+  $('#agr-read').onclick = openAgreement;
+}
+async function openAgreement() {
+  let data;
+  try { data = await api('/api/me/agreement'); } catch (e) { return toast(e.message, true); }
+  const a = data.agreement, signed = data.signature, dlg = $('#dlg-agr');
+  if (!a) return;
+  let zh = isZh();
+  const both = a.title_en && a.title_zh && a.body_en && a.body_zh;
+  const paint = () => {
+    const d = docText(a, zh);
+    $('#agr-title').textContent = d.title;
+    $('#agr-body').innerHTML = renderDoc(d.body);
+    $('#agr-body').lang = zh ? 'zh-Hant-TW' : 'en';
+    $('#agr-lang').textContent = zh ? 'English' : '中文';
+    $('#agr-lang').classList.toggle('hidden', !both);
+  };
+  paint();
+  $('#agr-lang').onclick = () => { zh = !zh; paint(); $('#agr-scroll').scrollTop = 0; };
+  const long = { year: 'numeric', month: 'short', day: 'numeric' };
+  $('#agr-meta').textContent = t('Version {v} · {date}', { v: a.version, date: dateLabel(dayKey(a.published_at), long) });
+  $('#agr-sign').classList.toggle('hidden', !!signed);
+  $('#agr-hint').classList.toggle('hidden', !!signed);
+  $('#agr-submit').classList.toggle('hidden', !!signed);
+  $('#agr-print').classList.toggle('hidden', !signed);
+  $('#agr-done').classList.toggle('hidden', !signed);
+  $('#agr-close').textContent = t(signed ? 'Close' : 'Later');
+  if (signed) $('#agr-done').innerHTML = `${icons.check}<span>${t('Signed by {name} on {date}', { name: esc(signed.signed_name), date: dateLabel(dayKey(signed.signed_at), long) })}</span>`;
+  $('#agr-err').textContent = '';
+  // Signing unlocks only after scrolling to the end of the text
+  const lock = (on) => {
+    $('#agr-check').disabled = on; $('#agr-name').disabled = on;
+    $('#agr-check-wrap').classList.toggle('disabled', on); if (!signed) $('#agr-hint').classList.toggle('hidden', !on);
+  };
+  $('#agr-check').checked = false; $('#agr-name').value = ''; $('#agr-name').placeholder = me.employee.name;
+  lock(!signed);
+  const io = new IntersectionObserver((ents) => { if (ents.some((x) => x.isIntersecting)) { lock(false); io.disconnect(); } }, { root: $('#agr-scroll') });
+  $('#agr-close').onclick = () => { io.disconnect(); dlg.close(); };
+  dlg.onclose = () => io.disconnect();
+  $('#agr-form').onsubmit = async (ev) => {
+    ev.preventDefault();
+    $('#agr-err').textContent = '';
+    if (!$('#agr-check').checked) { $('#agr-err').textContent = t('Tick the box to confirm you agree'); return; }
+    if ($('#agr-name').value.trim().length < 2) { $('#agr-err').textContent = t('Type your full name to sign'); $('#agr-name').focus(); return; }
+    try {
+      await api('/api/me/agreement/sign', { method: 'POST', body: { id: a.id, agree: true, name: $('#agr-name').value } });
+      dlg.close(); toast(t('Thank you! Your signature is saved.')); loadMe();
+    } catch (e) { $('#agr-err').textContent = e.message; }
+  };
+  dlg.showModal();
+  $('#agr-scroll').scrollTop = 0;
+  io.observe($('#agr-end'));
 }
 
 // ---------- 補休 (comp time) ----------

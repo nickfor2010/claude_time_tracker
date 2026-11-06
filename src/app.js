@@ -3,6 +3,7 @@ import { computePay, DEFAULT_PAYROLL, workDaySet, weekday as wdOf } from './payr
 import { TW_HOLIDAYS } from './holidays-tw.js';
 import { leaveBalance } from './leave-balance.js';
 import { compBalance } from './comp.js';
+import { DEFAULT_AGREEMENT } from './agreement-default.js';
 // Parsley Time — platform-independent API core.
 // Runs on Cloudflare Workers (D1) and on Node.js (node:sqlite) through a tiny async DB adapter:
 //   db.all(sql, params) -> rows, db.get(sql, params) -> row|null, db.run(sql, params) -> { lastId }, db.batch(sqls)
@@ -48,6 +49,12 @@ const SCHEMA = [
      month TEXT NOT NULL, hours REAL NOT NULL, amount REAL NOT NULL, created_at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS push_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, employee_id INTEGER, endpoint TEXT NOT NULL,
      p256dh TEXT NOT NULL, auth TEXT NOT NULL, lang TEXT DEFAULT 'en', created_at INTEGER NOT NULL, UNIQUE(endpoint, role))`,
+  // Staff code of conduct: one row per version; the draft has published_at NULL
+  `CREATE TABLE IF NOT EXISTS agreements (id INTEGER PRIMARY KEY AUTOINCREMENT, version INTEGER, title_en TEXT NOT NULL, title_zh TEXT NOT NULL,
+     body_en TEXT NOT NULL, body_zh TEXT NOT NULL, created_at INTEGER NOT NULL, published_at INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS agreement_signs (agreement_id INTEGER NOT NULL REFERENCES agreements(id) ON DELETE CASCADE,
+     employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, signed_name TEXT NOT NULL, signed_at INTEGER NOT NULL, ip TEXT,
+     PRIMARY KEY (agreement_id, employee_id))`,
 ];
 
 // ---------- crypto ----------
@@ -193,6 +200,15 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       await setSetting('admin_default', adminPassword ? '0' : '1');
     }
     if (!(await getSetting('company'))) await setSetting('company', 'Parsley 帕斯里');
+    // The default code of conduct starts as a draft for the manager to review and publish
+    if (!(await getSetting('agreement_seeded'))) {
+      const co = await getSetting('company');
+      const fill = (txt, lang) => txt.replaceAll('{company}', lang === 'zh' ? co : co.replace(/\s*[\u3400-\u9fff]+$/, '') || co);
+      const d = DEFAULT_AGREEMENT;
+      await db.run('INSERT INTO agreements(title_en, title_zh, body_en, body_zh, created_at) VALUES(?, ?, ?, ?, ?)',
+        [d.title_en, d.title_zh, fill(d.body_en, 'en'), fill(d.body_zh, 'zh'), Date.now()]);
+      await setSetting('agreement_seeded', '1');
+    }
     // Load each built-in year of official Taiwan holidays once. Years already loaded are left alone,
     // so dates the manager added or removed are kept.
     let done = (await getSetting('holidays_years'))?.split(',').filter(Boolean);
@@ -241,6 +257,35 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
   // domain
   const openShift = (empId) => db.get('SELECT * FROM shifts WHERE employee_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1', [empId]);
 
+  // ---------- shop agreement ----------
+  const publishedAgreement = () => db.get('SELECT * FROM agreements WHERE published_at IS NOT NULL ORDER BY version DESC LIMIT 1');
+  const draftAgreement = () => db.get('SELECT * FROM agreements WHERE published_at IS NULL ORDER BY id DESC LIMIT 1');
+  async function agreementPeople(cur) {
+    const emps = await db.all('SELECT id, name, role, color FROM employees WHERE active = 1 ORDER BY name');
+    const signs = await db.all(`SELECT s.employee_id, s.signed_at, s.signed_name, a.version, a.id AS agreement_id FROM agreement_signs s
+      JOIN agreements a ON a.id = s.agreement_id ORDER BY a.version DESC`);
+    return emps.map((e) => {
+      const mine = signs.filter((s) => s.employee_id === e.id);
+      const now = cur && mine.find((s) => s.agreement_id === cur.id);
+      return { ...e, signed_at: now?.signed_at || null, signed_name: now?.signed_name || null, last_version: mine[0]?.version || null, last_signed_at: mine[0]?.signed_at || null };
+    });
+  }
+  async function agreementFor(emp) {
+    const cur = await publishedAgreement();
+    if (!cur) return null;
+    const sign = await db.get('SELECT signed_at, signed_name FROM agreement_signs WHERE agreement_id = ? AND employee_id = ?', [cur.id, emp.id]);
+    return { id: cur.id, version: cur.version, title_en: cur.title_en, title_zh: cur.title_zh, published_at: cur.published_at, signed_at: sign?.signed_at || null };
+  }
+  async function notifyUnsigned(cur, origin, onlyId, first) {
+    const people = (await agreementPeople(cur)).filter((p) => !p.signed_at && (!onlyId || p.id === onlyId));
+    await Promise.all(people.map((p) => notify('emp', p.id, (lang) => ({
+      title: lang === 'zh' ? (first ? '新的員工守則' : '提醒：請閱讀並簽署員工守則') : (first ? 'New staff agreement' : 'Reminder: please read and sign'),
+      body: lang === 'zh' ? `請閱讀「${cur.title_zh}」並簽署。` : `Please read "${cur.title_en}" and sign it.`,
+      url: '/#agreement', tag: `agreement-${cur.id}`,
+    }), origin)));
+    return people.length;
+  }
+
   async function employeeSummary(emp) {
     const now = Date.now();
     const today = dayKey(now);
@@ -266,6 +311,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       week, todayMs, monthMs, now, today, timezone: TZ, geo: (await getSetting('geo')) === '1',
       balance: (await balancesFor([emp]))[0],
       comp: await compFor(emp),
+      agreement: await agreementFor(emp),
       leaveNotices: (await db.all("SELECT * FROM leave_requests WHERE employee_id = ? AND seen = 0 AND (status IN ('approved', 'rejected') OR (status = 'cancelled' AND revoked = 1)) ORDER BY decided_at", [emp.id])).map(withDays),
     };
   }
@@ -320,6 +366,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       now, today, timezone: TZ, company, geo: geo === '1', adminDefaultPassword: adminDefault === '1', alertHours: Number(alertHours) || 12,
       employees: employees.map((e) => ({ ...publicEmployee(e), ...perEmp[e.id], onShift: onShift.some((s) => s.employee_id === e.id) })),
       totals, onShift, days, activity,
+      agreement: await (async () => { const cur = await publishedAgreement(); if (!cur) return { version: null, draft: !!(await draftAgreement()) }; const ppl = await agreementPeople(cur); return { version: cur.version, unsigned: ppl.filter((x) => !x.signed_at).map((x) => x.name), total: ppl.length }; })(),
       pendingLeave: pendingLeave.n, leaveSoon: leaveSoon.map(withDays), leavePay: await leavePayRates(), payroll: pr.cfg, nextHolidays,
     };
   }
@@ -612,6 +659,27 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         await saveProfile(db, emp.id, profileFields(b, emp));
         return json(200, { ok: true });
       }
+      if (p === '/api/me/agreement' && m === 'GET') {
+        const cur = await publishedAgreement();
+        const sign = cur && await db.get('SELECT signed_at, signed_name FROM agreement_signs WHERE agreement_id = ? AND employee_id = ?', [cur.id, emp.id]);
+        return json(200, { agreement: cur || null, signature: sign || null, employee: { name: emp.name, role: emp.role }, company: await getSetting('company') });
+      }
+      if (p === '/api/me/agreement/sign' && m === 'POST') {
+        const b = await readBody(req);
+        const cur = await publishedAgreement();
+        if (!cur || Number(b.id) !== cur.id) throw new HttpError(400, 'This agreement has been updated. Please read the new version.');
+        if (b.agree !== true) throw new HttpError(400, 'Tick the box to confirm you agree');
+        const name = String(b.name || '').trim().replace(/\s+/g, ' ');
+        if (name.length < 2 || name.length > 80) throw new HttpError(400, 'Type your full name to sign');
+        if (await db.get('SELECT 1 FROM agreement_signs WHERE agreement_id = ? AND employee_id = ?', [cur.id, emp.id])) throw new HttpError(400, 'You already signed this agreement');
+        await db.run('INSERT INTO agreement_signs(agreement_id, employee_id, signed_name, signed_at, ip) VALUES(?, ?, ?, ?, ?)', [cur.id, emp.id, name, Date.now(), ip || null]);
+        later(notify('admin', null, (lang) => ({
+          title: lang === 'zh' ? `${emp.name} 已簽署員工守則` : `${emp.name} signed the staff agreement`,
+          body: lang === 'zh' ? `${cur.title_zh}（第 ${cur.version} 版）` : `${cur.title_en} (version ${cur.version})`,
+          url: '/admin#team', tag: `agreement-sign-${emp.id}`,
+        }), origin));
+        return json(200, { ok: true });
+      }
       if (p === '/api/me/pin' && m === 'POST') {
         if (await rateLimited(ip)) throw new HttpError(429, 'Too many attempts. Try again in 15 minutes.');
         const { current, pin } = await readBody(req);
@@ -775,6 +843,56 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         return json(200, publicEmployee(await db.get('SELECT * FROM employees WHERE id = ?', [emp.id])));
       }
 
+      if (p === '/api/admin/agreement' && m === 'GET') {
+        const cur = await publishedAgreement();
+        const versions = await db.all('SELECT id, version, published_at FROM agreements WHERE published_at IS NOT NULL ORDER BY version DESC');
+        return json(200, { published: cur || null, draft: (await draftAgreement()) || null, versions, people: await agreementPeople(cur) });
+      }
+      if (p === '/api/admin/agreement/draft' && m === 'PUT') {
+        const b = await readBody(req);
+        const f = {};
+        for (const [k, max] of [['title_en', 120], ['title_zh', 120], ['body_en', 20000], ['body_zh', 20000]]) {
+          f[k] = String(b[k] ?? '').trim();
+          if (f[k].length > max) throw new HttpError(400, 'The text is too long');
+        }
+        if (!(f.title_en || f.title_zh) || !(f.body_en || f.body_zh)) throw new HttpError(400, 'Write a title and the text');
+        const d = await draftAgreement();
+        if (d) await db.run('UPDATE agreements SET title_en = ?, title_zh = ?, body_en = ?, body_zh = ? WHERE id = ?', [f.title_en, f.title_zh, f.body_en, f.body_zh, d.id]);
+        else await db.run('INSERT INTO agreements(title_en, title_zh, body_en, body_zh, created_at) VALUES(?, ?, ?, ?, ?)', [f.title_en, f.title_zh, f.body_en, f.body_zh, Date.now()]);
+        return json(200, { draft: await draftAgreement() });
+      }
+      if (p === '/api/admin/agreement/draft' && m === 'DELETE') {
+        await db.run('DELETE FROM agreements WHERE published_at IS NULL');
+        return json(200, { ok: true });
+      }
+      if (p === '/api/admin/agreement/publish' && m === 'POST') {
+        const d = await draftAgreement();
+        if (!d) throw new HttpError(400, 'There is no draft to publish');
+        const last = await db.get('SELECT MAX(version) AS v FROM agreements WHERE published_at IS NOT NULL');
+        const version = (last?.v || 0) + 1;
+        await db.run('UPDATE agreements SET version = ?, published_at = ? WHERE id = ?', [version, Date.now(), d.id]);
+        const cur = await publishedAgreement();
+        later(notifyUnsigned(cur, origin, null, true));
+        return json(200, { ok: true, version });
+      }
+      if (p === '/api/admin/agreement/remind' && m === 'POST') {
+        const b = await readBody(req);
+        const cur = await publishedAgreement();
+        if (!cur) throw new HttpError(400, 'Publish the agreement first');
+        const n = (await agreementPeople(cur)).filter((x) => !x.signed_at && (!b.employee_id || x.id === Number(b.employee_id))).length;
+        later(notifyUnsigned(cur, origin, Number(b.employee_id) || null, false));
+        return json(200, { ok: true, reminded: n });
+      }
+      let ag;
+      if ((ag = p.match(/^\/api\/admin\/agreement\/signed\/(\d+)$/)) && m === 'GET') {
+        const emp = await db.get('SELECT id, name, role FROM employees WHERE id = ?', [Number(ag[1])]);
+        if (!emp) throw new HttpError(404, 'Employee not found');
+        const row = await db.get(`SELECT a.*, s.signed_at, s.signed_name FROM agreement_signs s JOIN agreements a ON a.id = s.agreement_id
+          WHERE s.employee_id = ? ORDER BY a.version DESC LIMIT 1`, [emp.id]);
+        if (!row) throw new HttpError(404, 'Not signed yet');
+        const { signed_at, signed_name, ...agreement } = row;
+        return json(200, { agreement, signature: { signed_at, signed_name }, employee: emp, company: await getSetting('company') });
+      }
       if (p === '/api/admin/shifts' && m === 'GET') {
         const from = url.searchParams.get('from'), to = url.searchParams.get('to');
         if (!isDate(from) || !isDate(to)) throw new HttpError(400, 'from/to required');

@@ -30,6 +30,8 @@ export const icons = {
   alert: I('<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'),
   pin: I('<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
   back: I('<path d="m15 18-6-6 6-6"/>'),
+  doc: I('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>'),
+  printer: I('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>'),
   trash: I('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>'),
 };
 
@@ -145,3 +147,27 @@ export function leaveRange(r) {
   return `${r.start_date === r.end_date ? dateLabel(r.start_date, { weekday: 'short', ...o }) : `${dateLabel(r.start_date, o)} – ${dateLabel(r.end_date, o)}`} · ${days}`;
 }
 export const statusPill = (st) => `<span class="pill st-${st === 'revoked' ? 'rejected' : st}"><span class="dot"></span>${t({ pending: 'Waiting for approval', approved: 'Approved', rejected: 'Declined', cancelled: 'Cancelled', revoked: 'Revoked by manager' }[st])}</span>`;
+
+// ---------- shop agreement text ----------
+// Renders the small text format used by the agreement: "## " headings, "- " bullets, blank-line paragraphs, **bold**.
+export function renderDoc(src) {
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const out = [];
+  let list = null;
+  for (const raw of String(src || '').replace(/\r/g, '').split('\n')) {
+    const line = raw.trim();
+    if (/^[-•*]\s+/.test(line)) { (list ||= []).push(`<li>${inline(line.replace(/^[-•*]\s+/, ''))}</li>`); continue; }
+    if (list) { out.push(`<ul>${list.join('')}</ul>`); list = null; }
+    if (!line) continue;
+    if (line.startsWith('## ')) out.push(`<h4>${inline(line.slice(3))}</h4>`);
+    else if (line.startsWith('# ')) out.push(`<h3>${inline(line.slice(2))}</h3>`);
+    else out.push(`<p>${inline(line)}</p>`);
+  }
+  if (list) out.push(`<ul>${list.join('')}</ul>`);
+  return out.join('');
+}
+// The agreement in the current language, falling back to the other one if a translation is missing
+export const docText = (a, zh) => ({
+  title: (zh ? a.title_zh : a.title_en) || a.title_en || a.title_zh,
+  body: (zh ? a.body_zh : a.body_en) || a.body_en || a.body_zh,
+});

@@ -99,6 +99,35 @@ Statutory holidays 2020–2027 are built in, so past holidays are skipped automa
   - The person's other phones are signed out.
   - The manager can still set a new PIN in Team if someone forgets theirs.
 
+## Staff agreement (員工守則暨保密同意書)
+
+A code of conduct that every team member reads and signs in the app.
+
+- **Ready-made text.** It comes in English and 中文 and covers:
+  - honesty: punching only for yourself, cash and stock, owning up to mistakes;
+  - cooperation and respect;
+  - communication: lateness, absences, speaking up;
+  - **confidentiality of recipes and methods**, under the Trade Secrets Act 營業秘密法, continuing after the job ends;
+  - hygiene and food safety, conduct at work and social media;
+  - what happens when rules are broken (talk → written warning → 勞基法第12條 for serious breaches);
+  - the shop's own promise to the team.
+
+  It starts as a **draft** for you to review in Team → Staff agreement.
+- **Edit and publish.** Edit both languages, with a live preview, then press **Publish**. Every team member gets a notification.
+  - Changing the text later creates a **new version**, and everyone signs again.
+  - Earlier signatures are kept.
+- **Staff side.**
+  - The agreement opens by itself until it's signed, and a reminder card stays on the main screen.
+  - The person scrolls to the end, ticks "I have read and understood this agreement, and I agree to follow it", types their full name and taps **Sign**.
+  - They can reread it at any time (tap their name → Staff agreement) and print their copy.
+- **Manager side.**
+  - Team shows who has signed and when, with a progress bar.
+  - **Remind** sends a reminder to one person or to everyone who hasn't signed.
+  - 🖨 prints a signed copy (中文 + English, with name, version and time) for the personnel file.
+  - The Overview shows a banner while people still need to sign.
+
+The text is a starting template, not legal advice. Adjust it to your shop, and have it checked if you are unsure.
+
 ## Languages (English / 繁體中文)
 
 Every screen comes in English and Traditional Chinese (Taiwan). A phone set to Chinese opens in Chinese automatically, and the **中文 / EN** button switches language at any time. Each phone or computer remembers its own choice. The CSV export follows the dashboard language. All texts live in `public/js/i18n.js`.

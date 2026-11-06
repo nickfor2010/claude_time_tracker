@@ -53,6 +53,7 @@
     <!-- 3. Punch -->
     <section id="view-punch" class="hidden">
       <div class="hero-clock"><div class="time tnum" data-clock></div><div class="date" data-date></div></div>
+      <div id="agreement-ask"></div>
       <div id="comp-proposal"></div>
       <div id="leave-notice"></div>
       <div class="status-line" id="status"></div>
@@ -120,6 +121,11 @@
         <div class="err" id="me-err"></div>
         <button class="btn btn-primary btn-sm" style="justify-self:start" data-i18n>Save</button>
       </form>
+      <div class="me-sec hidden" id="me-agr">
+        <h4 data-i18n>Staff agreement</h4>
+        <p class="muted" style="margin:0;font-size:13px" id="me-agr-status"></p>
+        <button class="btn btn-ghost btn-sm" type="button" style="justify-self:start" id="me-agr-open" data-i18n>Read</button>
+      </div>
       <div class="dlg-actions">
         <button class="btn btn-danger" type="button" id="me-signout" data-i18n>Sign out</button>
         <span class="spacer"></span>
@@ -147,6 +153,34 @@
         <span class="spacer"></span>
         <button class="btn btn-ghost" value="cancel" formnovalidate data-i18n>Cancel</button>
         <button class="btn btn-primary" value="save" data-i18n>Send request</button>
+      </div>
+    </form>
+  </dialog>
+  <!-- Staff agreement: read and sign -->
+  <dialog id="dlg-agr" class="dlg-doc">
+    <form class="doc-dlg" id="agr-form">
+      <div class="doc-head">
+        <div class="row"><h3 id="agr-title"></h3><button class="btn btn-ghost btn-sm" type="button" id="agr-lang"></button></div>
+        <div class="meta" id="agr-meta"></div>
+      </div>
+      <div class="doc-scroll" id="agr-scroll">
+        <div class="doc" id="agr-body"></div>
+        <div class="doc-sign" id="agr-sign">
+          <label class="check disabled" id="agr-check-wrap"><input type="checkbox" id="agr-check" disabled> <span data-i18n>I have read and understood this agreement, and I agree to follow it.</span></label>
+          <div class="field"><label for="agr-name" data-i18n>Type your full name to sign</label><input class="input" id="agr-name" maxlength="80" autocomplete="name" disabled></div>
+        </div>
+        <div class="doc-signed hidden" id="agr-done"></div>
+        <div id="agr-end" style="height:1px"></div>
+      </div>
+      <div class="doc-foot">
+        <p class="muted" style="margin:0;font-size:13px" id="agr-hint" data-i18n>Scroll to the end to sign.</p>
+        <div class="err" id="agr-err"></div>
+        <div class="dlg-actions" style="margin:0">
+          <a class="btn btn-ghost hidden" id="agr-print" href="/agreement" target="_blank" rel="noopener" data-i18n>Print</a>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" type="button" id="agr-close" data-i18n>Later</button>
+          <button class="btn btn-primary" id="agr-submit" data-i18n>Sign</button>
+        </div>
       </div>
     </form>
   </dialog>

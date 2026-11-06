@@ -151,6 +151,34 @@
   </dialog>
 
   <!-- Install QR dialog -->
+  <dialog id="dlg-agr" class="dlg-doc">
+    <form class="doc-dlg" id="form-agr">
+      <div class="doc-head">
+        <div class="row"><h3 data-i18n>Staff agreement</h3><span class="muted" style="font-size:13px" id="agr-state"></span></div>
+        <div class="seg" id="agr-langs" role="tablist" style="margin-top:6px">
+          <button type="button" data-l="zh">中文</button><button type="button" data-l="en">English</button>
+        </div>
+      </div>
+      <div class="agr-edit">
+        <div class="field"><label for="agr-title-in" data-i18n>Title</label><input class="input" id="agr-title-in" maxlength="120"></div>
+        <div class="field"><label for="agr-body-in" data-i18n>Text</label><textarea class="input" id="agr-body-in" maxlength="20000"></textarea></div>
+        <p class="muted" style="margin:-4px 0 0;font-size:12.5px" data-i18n>Start a line with ## for a heading and - for a bullet. Leave an empty line between paragraphs. **Bold** works too.</p>
+        <label class="check"><input type="checkbox" id="agr-preview"> <span data-i18n>Preview</span></label>
+        <div class="preview doc hidden" id="agr-preview-box"></div>
+        <p class="muted" style="margin:0;font-size:12.5px" data-i18n>This text is a starting template, not legal advice. Adjust it to your shop, and have it checked if you are unsure.</p>
+      </div>
+      <div class="doc-foot">
+        <div class="err" id="agr-err"></div>
+        <div class="dlg-actions" style="margin:0;flex-wrap:wrap">
+          <button class="btn btn-danger btn-sm" type="button" id="agr-discard" data-i18n>Discard draft</button>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" type="button" id="agr-cancel" data-i18n>Close</button>
+          <button class="btn btn-ghost" type="button" id="agr-save" data-i18n>Save draft</button>
+          <button class="btn btn-primary" type="submit" id="agr-publish" data-i18n>Publish</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
   <dialog id="dlg-qr">
     <div class="qr-dlg">
       <h3 data-i18n>Install the app</h3>
