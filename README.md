@@ -14,6 +14,14 @@ A time clock for the Parsley team. Staff install it on their phones and tap a bu
   - optional location stamp on each punch
 - **Runs on Cloudflare (free)** using Workers and a D1 database. It also runs on any server with Node.js 22.13 or newer, which uses Node's built-in SQLite.
 
+## Our addresses
+
+| | Address |
+|---|---|
+| Staff app (clock in/out) | https://claude-time-tracker.okaintouch.workers.dev/ |
+| Manager dashboard | https://claude-time-tracker.okaintouch.workers.dev/admin |
+| Install poster with QR code | https://claude-time-tracker.okaintouch.workers.dev/poster |
+
 ## Time off (休假)
 
 Staff tap **Time off → Request** on their phone, then choose the type (annual 特休, personal 事假, sick 病假, other), the dates (or a half day) and a reason. The manager sees a badge and a banner, and approves or declines in **Time off** with an optional reply. The employee sees the answer the next time they open the app.
@@ -152,7 +160,7 @@ If someone stays clocked in longer than the warning time (12 hours by default; c
 1. Create a free account at [dash.cloudflare.com](https://dash.cloudflare.com/sign-up).
 2. Go to **Workers & Pages → Create → Import a repository**. Connect GitHub and choose `claude_time_tracker`.
 3. Leave the defaults (deploy command `npx wrangler deploy`) and click **Deploy**.
-4. Open the link you get (`https://parsley-time.<your-name>.workers.dev`) and add `/admin` to the end. Sign in with **`parsley`**, then change the password right away under Settings.
+4. Open the link you get (ours is `https://claude-time-tracker.okaintouch.workers.dev`) and add `/admin` to the end. Sign in with **`parsley`**, then change the password right away under Settings.
 5. Add your team under **Team**, then send them the main link:
    - **iPhone (Safari):** Share → Add to Home Screen.
    - **Android (Chrome):** tap **Install**.
