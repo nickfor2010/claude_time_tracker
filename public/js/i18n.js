@@ -641,6 +641,9 @@ const zh = {
   "Save draft": "儲存草稿",
   "Publish": "發布",
   'Loading…': '載入中…',
+  "On call": "臨時待命",
+  "On call: no fixed days. You call them when there is a lot of work, and they are paid by the hour for the hours they clock. 特休 follows the hours they actually worked in the last 12 months.": "臨時待命：沒有固定上班日，忙的時候再請他們來，依實際打卡時數支付時薪。特休依過去 12 個月實際工作時數比例計算。",
+  "On-call staff have no fixed schedule. Add their shifts one by one or import them.": "臨時待命人員沒有固定班表，請逐筆新增班次或匯入。",
 };
 
 export function getLang() {

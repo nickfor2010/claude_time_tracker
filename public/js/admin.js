@@ -615,7 +615,7 @@ function renderPayroll() {
             r.changed_since_paid ? t('Hours or rates changed after payment') : '',
           ].filter(Boolean);
           return `<tr>
-            <td><span class="emp">${avatar(r)}<span>${esc(r.name)}<span class="sub"><span class="tag ${r.pay_type}">${r.pay_type === 'monthly' ? t('Monthly') : t('Hourly')}</span> ${r.pay_type === 'monthly' ? money(r.salary) : money(r.rate) + '/' + t('h')}</span></span></span>
+            <td><span class="emp">${avatar(r)}<span>${esc(r.name)}<span class="sub"><span class="tag ${r.pay_type}">${t({ monthly: 'Monthly', oncall: 'On call' }[r.pay_type] || 'Hourly')}</span> ${r.pay_type === 'monthly' ? money(r.salary) : money(r.rate) + '/' + t('h')}</span></span></span>
               ${warn.map((w) => `<span class="warn-line">⚠ ${w}</span>`).join('')}</td>
             <td class="num">${hrsLabel(r.hours.worked)}<span class="sub">${t('{n} days', { n: r.days_worked })}</span></td>
             <td class="num">${r.hours.ot1 + r.hours.ot2 ? hrsLabel(r.hours.ot1 + r.hours.ot2) : '—'}${r.hours.comp ? `<span class="sub">${t('→ 補休 {h}', { h: hrsLabel(r.hours.comp) })}</span>` : ''}</td>
@@ -988,7 +988,7 @@ function renderTeam() {
     ${agreementCard()}
     <div class="team-cards">${d.employees.length ? d.employees.slice().sort((a, b) => b.active - a.active).map((e) => `
       <div class="card member ${e.active ? '' : 'inactive'}">
-        <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${e.pay_type === 'monthly' ? `${money(e.monthly_salary)}/${t('month')}` : `${money(e.hourly_rate)}/${t('h')}`} · ${workDaysLabel(e.work_days)}${e.active ? '' : ' · ' + t('inactive')}</div></div>
+        <div class="member-top">${avatar(e, e.onShift ? 'on' : '')}<div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="rl">${esc(e.role || t('Team member'))} · ${e.pay_type === 'monthly' ? `${money(e.monthly_salary)}/${t('month')}` : `${money(e.hourly_rate)}/${t('h')}`} · ${e.pay_type === 'oncall' ? `<span class="tag oncall">${t('On call')}</span>` : workDaysLabel(e.work_days)}${e.active ? '' : ' · ' + t('inactive')}</div></div>
           <button class="btn btn-ghost btn-icon btn-sm" style="margin-left:auto" data-emp="${e.id}" aria-label="${t('Edit {name}', { name: esc(e.name) })}">${icons.edit}</button></div>
         <div class="member-stats"><div><div class="k">${t('Today')}</div><div class="v">${hours(e.todayMs)}h</div></div><div><div class="k">${t('Week')}</div><div class="v">${hours(e.weekMs)}h</div></div><div><div class="k">${t('Month')}</div><div class="v">${hours(e.monthMs)}h</div></div></div>
         ${(() => { const b = (state.balances || []).find((x) => x.employee_id === e.id); const a = b?.annual;
@@ -1033,14 +1033,16 @@ function openEmp(e, { focus } = {}) {
   $('#em-ins').value = e ? e.insurance || 0 : 0;
   let payType = e?.pay_type || 'hourly';
   const paintPay = () => {
-    $('#em-paytype').innerHTML = ['hourly', 'monthly'].map((k) => `<button type="button" role="radio" aria-checked="${k === payType}" data-pt="${k}">${t(k === 'hourly' ? 'Hourly (part-time)' : 'Monthly salary (full-time)')}</button>`).join('');
-    $('#form-emp').classList.toggle('is-hourly', payType === 'hourly');
+    $('#em-paytype').innerHTML = ['hourly', 'monthly', 'oncall'].map((k) => `<button type="button" role="radio" aria-checked="${k === payType}" data-pt="${k}">${t({ hourly: 'Hourly (part-time)', monthly: 'Monthly salary (full-time)', oncall: 'On call' }[k])}</button>`).join('');
+    // on call is paid by the hour too, but has no fixed work days
+    $('#form-emp').classList.toggle('is-hourly', payType !== 'monthly');
+    $('#form-emp').classList.toggle('is-oncall', payType === 'oncall');
     $('#form-emp').classList.toggle('is-monthly', payType === 'monthly');
     $('#em-salary').required = payType === 'monthly';
   };
   $('#em-paytype').onclick = (ev) => { const b = ev.target.closest('[data-pt]'); if (b) { payType = b.dataset.pt; paintPay(); } };
   paintPay();
-  const days = new Set(String(e?.work_days ?? '1,2,3,4,5').split(',').filter(Boolean).map(Number));
+  const days = new Set(String(e?.work_days || '1,2,3,4,5').split(',').filter(Boolean).map(Number));
   $('#em-days').innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" value="${d}" ${days.has(d) ? 'checked' : ''}><span>${weekdayShort(d)}</span></label>`).join('');
   $('#em-pin').value = '';
   $('#em-pin').required = !e;

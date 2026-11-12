@@ -94,13 +94,14 @@
         <div class="field"><label data-i18n>Annual leave system</label><div class="seg seg-sm" id="em-lsys" role="radiogroup"></div></div>
       </div>
       <p class="muted" style="margin:-8px 0 0;font-size:12.5px" data-i18n>特休 (annual leave) is calculated from the start date.</p>
-      <div class="field"><label data-i18n>Pay type</label><div class="seg" id="em-paytype" role="radiogroup"></div></div>
+      <div class="field"><label data-i18n>Pay type</label><div class="seg seg-3" id="em-paytype" role="radiogroup"></div></div>
+      <p class="muted pay-oncall" style="margin:-8px 0 0;font-size:12.5px" data-i18n>On call: no fixed days. You call them when there is a lot of work, and they are paid by the hour for the hours they clock. 特休 follows the hours they actually worked in the last 12 months.</p>
       <div class="row-2">
         <div class="field pay-hourly"><label for="em-rate" data-i18n>Hourly rate (NT$)</label><input class="input" type="number" min="0" step="1" id="em-rate" value="196"></div>
         <div class="field pay-monthly"><label for="em-salary" data-i18n>Monthly salary (NT$)</label><input class="input" type="number" min="0" step="100" id="em-salary" value="0"></div>
         <div class="field"><label for="em-daily" data-i18n>Hours per work day</label><input class="input" type="number" min="1" max="24" step="0.5" id="em-daily" value="8"></div>
       </div>
-      <div class="field"><label data-i18n>Work days</label><div class="days" id="em-days"></div></div>
+      <div class="field pay-fixed"><label data-i18n>Work days</label><div class="days" id="em-days"></div></div>
       <div class="row-2">
         <div class="field pay-hourly"><label for="em-leave" data-i18n>Paid hours per leave day</label><input class="input" type="number" min="0" max="24" step="0.5" id="em-leave" value="8"></div>
         <div class="field"><label for="em-ins" data-i18n>Insurance deduction / month (NT$)</label><input class="input" type="number" min="0" step="1" id="em-ins" value="0"></div>

@@ -24,6 +24,10 @@ export function monthDays(month) {
   return Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 }
 export const workDaySet = (e) => new Set(String(e.work_days ?? '1,2,3,4,5').split(',').filter((x) => x !== '').map(Number));
+// On-call staff (臨時待命) have no fixed schedule: they are paid by the hour for the hours they work.
+export const isOnCall = (e) => e.pay_type === 'oncall';
+// Days on which leave can count: on-call staff can take leave on any day they were asked to work.
+export const leaveDaySet = (e) => (isOnCall(e) ? new Set([0, 1, 2, 3, 4, 5, 6]) : workDaySet(e));
 const money = (n) => Math.round(n);
 const hrs = (n) => Math.round(n * 100) / 100;
 
@@ -71,7 +75,7 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
   const daily = Number(e.daily_hours) > 0 ? Number(e.daily_hours) : 8;
   const salary = Number(e.monthly_salary) || 0;
   const rate = monthly ? salary / (Number(cfg.divisor) || 240) : Number(e.hourly_rate) || 0;
-  const wd = workDaySet(e);
+  const wd = workDaySet(e), leaveWd = leaveDaySet(e);
   const tier = Number(cfg.ot_tier) >= 0 ? Number(cfg.ot_tier) : 2;
 
   // Hours per day
@@ -98,7 +102,7 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
   let leaveAdd = 0, leaveDeduct = 0;
   for (const r of leave) {
     for (let d = r.start_date > days[0] ? r.start_date : days[0]; d <= r.end_date && d <= days[days.length - 1]; d = addDays(d, 1)) {
-      if (!wd.has(weekday(d)) || holidays.has(d)) continue; // holidays are already paid days off
+      if (!leaveWd.has(weekday(d)) || holidays.has(d)) continue; // holidays are already paid days off
       const share = r.half_day ? 0.5 : 1;
       const comp = r.type === 'comp';
       const h = comp ? Number(r.hours) || daily * share : (monthly ? daily : Number(e.leave_hours ?? 8)) * share;
@@ -111,8 +115,8 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
     }
   }
 
-  // Holidays on this person's work days
-  const holidayDays = days.filter((d) => holidays.has(d) && wd.has(weekday(d)));
+  // Holidays on this person's work days (on-call staff have none; working on a holiday still earns the extra pay)
+  const holidayDays = isOnCall(e) ? [] : days.filter((d) => holidays.has(d) && wd.has(weekday(d)));
   // Hourly staff: a holiday on a work day they didn't work is paid at their daily hours
   const paidHolidays = !monthly && cfg.holiday_pay_hourly ? holidayDays.filter((d) => !perDay[d]) : [];
   const holidayPay = paidHolidays.length * daily * rate;
@@ -134,7 +138,7 @@ export function computePay({ e, month, shifts, leave, adj, leavePay = DEFAULT_LE
   const deductions = money(leaveDeduct) + money(insurance) + money(other);
 
   return {
-    employee_id: e.id, name: e.name, color: e.color, pay_type: monthly ? 'monthly' : 'hourly', month,
+    employee_id: e.id, name: e.name, color: e.color, pay_type: monthly ? 'monthly' : isOnCall(e) ? 'oncall' : 'hourly', month,
     rate: hrs(rate), salary: money(salary), daily_hours: daily,
     hours: { worked: hrs(worked), regular: hrs(regular), ot1: hrs(ot1), ot2: hrs(ot2), holiday: hrs(holidayWorked), holiday_extra: hrs(holidayExtraHours), comp: hrs(compOt) },
     holidays: holidayDays.map((d) => ({ date: d, name: holidays.get(d), worked: hrs(perDay[d] || 0), paid: paidHolidays.includes(d) })),

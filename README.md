@@ -60,7 +60,15 @@ Notifications are sent with standard Web Push. No outside service or account is 
 
 ## Payroll (薪資)
 
-Each person is either **Hourly** (part-time) or **Monthly salary** (full-time). In **Team**, you also set their hours per work day, work days and monthly insurance deduction.
+Each person is **Hourly** (part-time), **Monthly salary** (full-time) or **On call** (臨時待命).
+
+**On call** is for people you call in when there is a lot of work. They are paid by the hour for the hours they clock, and they have no fixed work days.
+- National holidays are paid only if they work them, and then they also earn the extra holiday pay.
+- Leave counts on whichever day they were due to work.
+- 特休 is in proportion to the hours they actually worked in the last 12 months (40 h/week = 100%).
+- "Fill standard schedule" doesn't apply to them. Add their shifts one by one or import them.
+
+In **Team**, you also set each person's hours per work day, work days (not for on call) and monthly insurance deduction.
 
 - **Payroll page.** Every month you see each person's hours, overtime, base pay, extras, deductions and net pay. **Adjust** adds a bonus, insurance or another deduction, plus a note. **Mark paid** locks the payslip and notifies the employee. **Reopen** unlocks it again. **Export CSV** gives the whole month.
 - **Overtime.** Hours beyond the daily hours are paid ×1.34 for the first 2 h, then ×1.67. For monthly staff, all hours worked on a non-work day count as overtime.

@@ -1,5 +1,5 @@
 import { createVapidKeys, sendPush } from './push.js';
-import { computePay, DEFAULT_PAYROLL, workDaySet, weekday as wdOf } from './payroll.js';
+import { computePay, DEFAULT_PAYROLL, workDaySet, leaveDaySet, weekday as wdOf } from './payroll.js';
 import { TW_HOLIDAYS } from './holidays-tw.js';
 import { leaveBalance } from './leave-balance.js';
 import { compBalance } from './comp.js';
@@ -138,14 +138,14 @@ const saveProfile = (db, id, pf) => db.run(`UPDATE employees SET ${PROFILE_FIELD
 // Validated pay fields shared by "add" and "edit employee".
 function payFields(b, cur = {}) {
   const pick = (k, fallback) => (b[k] !== undefined ? b[k] : fallback);
-  const pay_type = pick('pay_type', cur.pay_type || 'hourly') === 'monthly' ? 'monthly' : 'hourly';
+  const pay_type = ['monthly', 'oncall'].includes(pick('pay_type', cur.pay_type || 'hourly')) ? pick('pay_type', cur.pay_type) : 'hourly';
   const nonNeg = (v, f) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : f; };
   const days = String(pick('work_days', cur.work_days ?? '1,2,3,4,5')).split(',').map(Number).filter((n) => n >= 0 && n <= 6);
   return {
     pay_type,
     monthly_salary: nonNeg(pick('monthly_salary', cur.monthly_salary || 0), 0),
     daily_hours: Math.min(24, nonNeg(pick('daily_hours', cur.daily_hours ?? 8), 8)) || 8,
-    work_days: [...new Set(days)].sort().join(','),
+    work_days: pay_type === 'oncall' ? '' : [...new Set(days)].sort().join(','), // on call: no fixed days
     insurance: nonNeg(pick('insurance', cur.insurance || 0), 0),
     start_date: (() => { const v = pick('start_date', cur.start_date ?? null); return isDate(v) ? v : null; })(),
     leave_system: pick('leave_system', cur.leave_system || 'anniversary') === 'calendar' ? 'calendar' : 'anniversary',
@@ -449,7 +449,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
       WHERE l.status = 'approved' AND l.start_date <= ? AND l.end_date >= ? ${employeeId ? 'AND l.employee_id = ?' : ''}`, params);
     const out = [];
     for (const r of rows) {
-      const wd = workDaySet(r), monthly = r.pay_type === 'monthly';
+      const wd = leaveDaySet(r), monthly = r.pay_type === 'monthly';
       for (let d = r.start_date > fromDate ? r.start_date : fromDate; d <= r.end_date && d <= toDate; d = addDays(d, 1)) {
         if (!wd.has(wdOf(d)) || hol.has(d)) continue; // only scheduled working days that aren't holidays count as leave
         const hours = r.type === 'comp' ? Number(r.hours) || 0 : (monthly ? (r.daily_hours ?? 8) : (r.leave_hours ?? 8)) * (r.half_day ? 0.5 : 1);
@@ -505,7 +505,16 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     const adjusts = await db.all(`SELECT * FROM leave_adjust WHERE employee_id IN ${inIds} ORDER BY created_at`, ids);
     const settles = await db.all(`SELECT * FROM leave_settle WHERE employee_id IN ${inIds}`, ids);
     const comps = await Promise.all(employees.map((e) => compFor(e)));
-    return employees.map((e, i) => ({ ...leaveBalance(e, reqs.filter((r) => r.employee_id === e.id), today, hol,
+    // On-call staff earn 特休 in proportion to the hours they actually worked over the last 12 months (or since they started)
+    const withHours = await Promise.all(employees.map(async (e) => {
+      if (e.pay_type !== 'oncall') return e;
+      const from = [addDays(today, -364), e.start_date].filter(isDate).sort().pop();
+      const shifts = await db.all('SELECT clock_in, clock_out, break_min FROM shifts WHERE employee_id = ? AND clock_out IS NOT NULL AND clock_in >= ?', [e.id, zonedToMs(from)]);
+      const hours = shifts.reduce((sum, s) => sum + Math.max(0, s.clock_out - s.clock_in - (s.break_min || 0) * 60000) / 3600e3, 0);
+      const weeks = Math.max(1, (Date.parse(today) - Date.parse(from)) / (7 * 86400e3) + 1 / 7);
+      return { ...e, weekly_hours: Math.round((hours / weeks) * 10) / 10 };
+    }));
+    return withHours.map((e, i) => ({ ...leaveBalance(e, reqs.filter((r) => r.employee_id === e.id), today, hol,
       adjusts.filter((x) => x.employee_id === e.id), settles.filter((x) => x.employee_id === e.id)), comp: comps[i] }));
   }
 
@@ -559,7 +568,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
     const H = zh
       ? ['員工', '計薪方式', '工時', '加班 (1.34)', '加班 (1.67)', '本薪', '加班費', '帶薪假', '國定假日工資', '國定假日出勤加給', '特休未休工資', '補休未休工資', '獎金', '請假扣款', '勞健保', '其他扣款', '應發', '實發', '狀態']
       : ['Employee', 'Pay type', 'Hours', 'Overtime (1.34)', 'Overtime (1.67)', 'Base', 'Overtime pay', 'Paid leave', 'Holiday pay', 'Holiday work pay', 'Unused leave pay', 'Unused comp time pay', 'Bonus', 'Leave deduction', 'Insurance', 'Other deduction', 'Gross', 'Net', 'Status'];
-    const rows = [H, ...pr.rows.map((r) => [r.name, zh ? (r.pay_type === 'monthly' ? '月薪' : '時薪') : r.pay_type, r.hours.worked, r.hours.ot1, r.hours.ot2,
+    const rows = [H, ...pr.rows.map((r) => [r.name, zh ? ({ monthly: '月薪', oncall: '臨時待命' }[r.pay_type] || '時薪') : r.pay_type, r.hours.worked, r.hours.ot1, r.hours.ot2,
       r.earnings.base, r.earnings.overtime, r.earnings.leave, r.earnings.holiday || 0, r.earnings.holiday_work || 0, r.earnings.leave_payout || 0, r.earnings.comp_payout || 0, r.earnings.bonus, r.deductions.leave, r.deductions.insurance, r.deductions.other,
       r.gross, r.net, zh ? (r.status === 'paid' ? '已發放' : '草稿') : r.status])];
     rows.push([zh ? '合計' : 'TOTAL', '', Math.round(pr.totals.hours * 100) / 100, '', '', '', '', '', '', '', '', '', '', '', '', '', pr.totals.gross, pr.totals.net, '']);
@@ -748,7 +757,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
           hours = Math.round(Number(b.hours) * 2) / 2;
           const daily = Number(emp.daily_hours) > 0 ? Number(emp.daily_hours) : 8;
           if (!(hours >= 0.5 && hours <= daily)) throw new HttpError(400, 'Hours must be between 0.5 and your daily hours');
-          if (!workDaySet(emp).has(wdOf(b.start)) || await db.get('SELECT 1 FROM holidays WHERE date = ?', [b.start])) throw new HttpError(400, 'Pick one of your work days');
+          if (!leaveDaySet(emp).has(wdOf(b.start)) || await db.get('SELECT 1 FROM holidays WHERE date = ?', [b.start])) throw new HttpError(400, 'Pick one of your work days');
           const comp = await compFor(emp);
           if (!comp.balance || hours > comp.balance.requestable + 0.001) throw new HttpError(400, 'Not enough 補休 hours');
         }
@@ -1108,6 +1117,7 @@ export function createApp({ db, timezone = 'Asia/Taipei', adminPassword } = {}) 
         if (b.to > dayKey(Date.now())) throw new HttpError(400, 'The schedule can only be filled up to today');
         if (Date.parse(b.to) - Date.parse(b.from) > 8 * 366 * 86400e3) throw new HttpError(400, 'Fill at most 8 years at a time');
         if (!isTime(b.in) || !isTime(b.out)) throw new HttpError(400, 'Date and clock-in time are required');
+        if (emp.pay_type === 'oncall') throw new HttpError(400, 'On-call staff have no fixed schedule. Add their shifts one by one or import them.');
         const wd = workDaySet(emp);
         const [hol, leave, existing] = await Promise.all([
           b.skip_holidays === false ? new Set() : db.all('SELECT date FROM holidays WHERE date >= ? AND date <= ?', [b.from, b.to]).then((r) => new Set(r.map((x) => x.date))),

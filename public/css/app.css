@@ -583,3 +583,7 @@ dialog.dlg-doc form.doc-dlg { padding: 0; gap: 0; }
   .load-bar::before { animation-duration: 2.5s; }
   .skel, .boot-mark, .boot-dots i { animation: none; }
 }
+.seg.seg-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.seg.seg-3 button { white-space: normal; line-height: 1.25; }
+#form-emp:not(.is-oncall) .pay-oncall, #form-emp.is-oncall .pay-fixed { display: none; }
+.tag.oncall { background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--orange-700); margin-left: 0; }

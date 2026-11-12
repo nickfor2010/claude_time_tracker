@@ -75,3 +75,9 @@ test('carry-over, pay-out and manual adjustments', () => {
   b = leaveBalance(e, reqs, '2026-11-05', new Set(), [], [{ period_from: '2025-06-01', action: 'payout', days: 5, payout_month: '2026-06' }]);
   assert.deepEqual([b.annual.carried, b.annual.remaining, b.previous.decision.action], [0, 14, 'payout']);
 });
+
+test('on call: 特休 share follows the hours actually worked', () => {
+  assert.equal(partTimeRatio({ pay_type: 'oncall', work_days: '', weekly_hours: 10 }), 0.25);
+  assert.equal(partTimeRatio({ pay_type: 'oncall', work_days: '', weekly_hours: 0 }), 0);
+  assert.equal(partTimeRatio({ pay_type: 'oncall', work_days: '', weekly_hours: 55 }), 1);
+});

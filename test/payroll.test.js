@@ -84,3 +84,17 @@ test('national holidays: paid day off for hourly staff, double pay when worked, 
   const half = computePay({ ...m, e: vera, shifts: [shift('2026-09-25', '09:00', '13:00')], cfg: { ...DEFAULT_PAYROLL, holiday_full_day: false } });
   assert.equal(half.earnings.holiday_work, 800);
 });
+
+test('on call: paid by the hour, no holiday pay unless worked, leave counts on any day', () => {
+  const e = { id: 5, name: 'Evonne', pay_type: 'oncall', hourly_rate: 200, daily_hours: 8, work_days: '', leave_hours: 8 };
+  const holidays = new Map([['2026-11-10', 'Test holiday'], ['2026-11-12', 'Worked holiday']]);
+  const r = computePay({ ...base, e, holidays,
+    shifts: [shift('2026-11-07', '09:00', '15:00'), shift('2026-11-12', '09:00', '13:00')], // Sat 6h, holiday Thu 4h
+    leave: [{ type: 'annual', start_date: '2026-11-14', end_date: '2026-11-14', half_day: 0 }] }); // a Saturday
+  assert.equal(r.pay_type, 'oncall');
+  assert.equal(r.earnings.base, 2000); // 10 h x 200
+  assert.equal(r.earnings.holiday, 0); // no pay for the holiday they didn't work
+  assert.equal(r.earnings.holiday_work, 1600); // worked a holiday: one extra day's wage (8 h)
+  assert.equal(r.earnings.leave, 1600); // 特休 on a Saturday still counts for on-call staff
+  assert.equal(r.holidays.length, 0);
+});

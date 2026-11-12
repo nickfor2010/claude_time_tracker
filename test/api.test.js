@@ -369,6 +369,15 @@ test('full punch flow', async () => {
   assert.equal((await admin('/api/admin/agreement/draft', { method: 'DELETE' })).status, 200);
   assert.equal((await admin('/api/admin/agreement')).data.draft, null);
 
+  // On-call staff: no fixed days, no standard-schedule fill, 特休 share from hours worked
+  const oc = (await admin('/api/admin/employees', { method: 'POST', body: { name: 'Evonne', pin: '5826', pay_type: 'oncall', hourly_rate: 200, work_days: '1,2,3', start_date: '2025-01-06' } })).data;
+  assert.deepEqual([oc.pay_type, oc.work_days], ['oncall', '']);
+  assert.equal((await admin('/api/admin/backfill', { method: 'POST', body: { employee_id: oc.id, from: '2025-01-06', to: '2025-02-01', in: '09:00', out: '17:00', dry_run: true } })).status, 400);
+  await admin('/api/admin/shifts', { method: 'POST', body: { employee_id: oc.id, date: ov.today, in: '09:00', out: '19:00' } });
+  const ocBal = (await admin('/api/admin/balances')).data.balances.find((x) => x.employee_id === oc.id);
+  assert.ok(ocBal.ratio > 0 && ocBal.ratio < 0.1, `ratio ${ocBal.ratio}`);
+  await admin(`/api/admin/employees/${oc.id}`, { method: 'PATCH', body: { active: false } });
+
   // other employees / logged-out users cannot touch requests
   assert.equal((await client()('/api/leave')).status, 401);
   assert.equal((await client()('/api/admin/leave')).status, 401);

@@ -9,7 +9,7 @@
 // Part-time staff get a share in proportion to their weekly hours compared with a 40-hour week.
 // Carry-over (遞延): unused days of a closed year can be carried into the next one, paid out, or closed.
 // Pure functions: no database.
-import { workDaySet, weekday } from './payroll.js';
+import { workDaySet, leaveDaySet, weekday } from './payroll.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 // Adds months to a 'YYYY-MM-DD' date, clamping to the end of the month (e.g. Aug 31 + 6 months = Feb 28/29).
@@ -81,13 +81,14 @@ export function leavePeriod(e, date) {
 
 // Full-time = 40 h/week. Part-time staff get a proportional share (never more than full).
 export function partTimeRatio(e) {
-  const weekly = (Number(e.daily_hours) > 0 ? Number(e.daily_hours) : 8) * workDaySet(e).size;
+  // On-call staff: average weekly hours actually worked (worked out by the caller), since they have no schedule
+  const weekly = e.weekly_hours != null ? Number(e.weekly_hours) || 0 : (Number(e.daily_hours) > 0 ? Number(e.daily_hours) : 8) * workDaySet(e).size;
   return Math.min(1, weekly / 40);
 }
 
 // Leave days taken from approved/pending requests between from..to (inclusive), on the person's work days, skipping holidays.
 export function countLeaveDays(requests, e, from, to, holidays = new Set()) {
-  const wd = workDaySet(e);
+  const wd = leaveDaySet(e);
   let n = 0;
   for (const r of requests) {
     for (let d = r.start_date > from ? r.start_date : from; d <= r.end_date && d <= to; d = addDays(d, 1)) {
